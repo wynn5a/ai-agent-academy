@@ -2,7 +2,7 @@
   "name": "agent-engineering-academy",
   "version": "1.0.0",
   "private": true,
-  "packageManager": "pnpm@11.1.2",
+  "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=20.9.0"
   },

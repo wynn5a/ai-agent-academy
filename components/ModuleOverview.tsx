@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { getModule } from "@/content/registry";
 import { useProgress } from "@/lib/progress";
 import { PASS_THRESHOLD } from "@/lib/types";
+import ResourceList from "./ResourceList";
 
 export default function ModuleOverview({ moduleSlug }: { moduleSlug: string }) {
   const mod = getModule(moduleSlug)!;
@@ -120,6 +121,14 @@ export default function ModuleOverview({ moduleSlug }: { moduleSlug: string }) {
           )}
         </Link>
       </div>
+
+      <h2 className="mt-10 mb-1 text-lg font-bold text-slate-200">
+        Best external resources
+      </h2>
+      <p className="mb-4 text-sm text-slate-500">
+        Curated reading, docs, and tools that pair with this module.
+      </p>
+      <ResourceList resources={mod.resources} />
     </div>
   );
 }

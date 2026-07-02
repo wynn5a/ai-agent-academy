@@ -9,8 +9,19 @@ import { useProgress } from "@/lib/progress";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { moduleStats, ready } = useProgress();
+  const { completedLessons, moduleStats, ready } = useProgress();
   const [open, setOpen] = useState(false);
+
+  const activeModuleSlug = modules.find((m) =>
+    pathname?.startsWith(`/modules/${m.slug}`),
+  )?.slug;
+  const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>(
+    {},
+  );
+  const isModuleOpen = (slug: string) =>
+    slug in openOverrides ? openOverrides[slug] : slug === activeModuleSlug;
+  const toggleModule = (slug: string) =>
+    setOpenOverrides((prev) => ({ ...prev, [slug]: !isModuleOpen(slug) }));
 
   const nav = (
     <nav className="flex h-full flex-col gap-1 overflow-y-auto p-4">
@@ -47,37 +58,92 @@ export default function Sidebar() {
       {modules.map((m) => {
         const active = pathname?.startsWith(`/modules/${m.slug}`);
         const stats = ready ? moduleStats(m.slug) : null;
+        const expanded = isModuleOpen(m.slug);
         return (
-          <Link
-            key={m.slug}
-            href={`/modules/${m.slug}`}
-            onClick={() => setOpen(false)}
-            className={clsx(
-              "group flex items-center gap-2 rounded-lg px-3 py-2 text-sm",
-              active
-                ? "bg-sky-500/10 text-sky-300"
-                : "text-slate-400 hover:bg-white/5",
-            )}
-          >
-            <span
+          <div key={m.slug}>
+            <div
               className={clsx(
-                "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold",
-                stats && stats.percent >= 100
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : active
-                    ? "bg-sky-500/20 text-sky-300"
-                    : "bg-white/5 text-slate-500",
+                "group flex items-center gap-1 rounded-lg pr-2 text-sm",
+                active
+                  ? "bg-sky-500/10 text-sky-300"
+                  : "text-slate-400 hover:bg-white/5",
               )}
             >
-              {stats && stats.percent >= 100 ? "✓" : m.id}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{m.title}</span>
-            {stats && stats.percent > 0 && stats.percent < 100 && (
-              <span className="text-[10px] text-slate-600 tabular-nums">
-                {stats.percent}%
-              </span>
+              <Link
+                href={`/modules/${m.slug}`}
+                onClick={() => setOpen(false)}
+                className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2"
+              >
+                <span
+                  className={clsx(
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold",
+                    stats && stats.percent >= 100
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : active
+                        ? "bg-sky-500/20 text-sky-300"
+                        : "bg-white/5 text-slate-500",
+                  )}
+                >
+                  {stats && stats.percent >= 100 ? "✓" : m.id}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{m.title}</span>
+                {stats && stats.percent > 0 && stats.percent < 100 && (
+                  <span className="text-[10px] text-slate-600 tabular-nums">
+                    {stats.percent}%
+                  </span>
+                )}
+              </Link>
+              <button
+                type="button"
+                aria-label={expanded ? "Collapse lessons" : "Expand lessons"}
+                aria-expanded={expanded}
+                onClick={() => toggleModule(m.slug)}
+                className="shrink-0 rounded p-1 text-slate-600 hover:bg-white/10 hover:text-slate-300"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  className={clsx(
+                    "transition-transform",
+                    expanded ? "rotate-90" : "rotate-0",
+                  )}
+                >
+                  <path d="M9 6l6 6-6 6" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+            {expanded && (
+              <div className="mt-0.5 mb-1 ml-[1.875rem] space-y-0.5 border-l border-white/10 pl-3">
+                {m.lessons.map((l) => {
+                  const href = `/modules/${m.slug}/lessons/${l.slug}`;
+                  const lessonActive = pathname === href;
+                  const done = !!completedLessons[`${m.slug}/${l.slug}`];
+                  return (
+                    <Link
+                      key={l.slug}
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className={clsx(
+                        "block truncate rounded-md px-2 py-1.5 text-[13px]",
+                        lessonActive
+                          ? "bg-sky-500/10 font-medium text-sky-300"
+                          : "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+                      )}
+                    >
+                      {done && !lessonActive && (
+                        <span className="mr-1.5 text-emerald-500">✓</span>
+                      )}
+                      {l.title}
+                    </Link>
+                  );
+                })}
+              </div>
             )}
-          </Link>
+          </div>
         );
       })}
     </nav>

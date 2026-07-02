@@ -60,6 +60,24 @@ export interface Lab {
   stretchGoals?: string[];
 }
 
+export type ResourceKind =
+  | "docs"
+  | "guide"
+  | "essay"
+  | "paper"
+  | "repo"
+  | "book"
+  | "course"
+  | "interactive"
+  | "benchmark";
+
+export interface Resource {
+  title: string;
+  url: string;
+  description: string;
+  kind: ResourceKind;
+}
+
 export interface Module {
   id: number;
   slug: string;
@@ -72,6 +90,7 @@ export interface Module {
   lessons: Lesson[];
   quiz: QuizQuestion[];
   lab: Lab;
+  resources: Resource[];
 }
 
 export interface Gate {
