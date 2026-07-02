@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { modules } from "@/content/registry";
 import { useProgress } from "@/lib/progress";
+import Tooltip from "@/components/Tooltip";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -15,13 +17,17 @@ export default function Sidebar() {
   const activeModuleSlug = modules.find((m) =>
     pathname?.startsWith(`/modules/${m.slug}`),
   )?.slug;
-  const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>(
-    {},
+  const [openModule, setOpenModule] = useState<string | null | undefined>(
+    undefined,
   );
   const isModuleOpen = (slug: string) =>
-    slug in openOverrides ? openOverrides[slug] : slug === activeModuleSlug;
+    openModule === undefined ? slug === activeModuleSlug : openModule === slug;
   const toggleModule = (slug: string) =>
-    setOpenOverrides((prev) => ({ ...prev, [slug]: !isModuleOpen(slug) }));
+    setOpenModule((prev) => {
+      const currentlyOpen =
+        prev === undefined ? slug === activeModuleSlug : prev === slug;
+      return currentlyOpen ? null : slug;
+    });
 
   const nav = (
     <nav className="flex h-full flex-col gap-1 overflow-y-auto p-4">
@@ -62,6 +68,7 @@ export default function Sidebar() {
         return (
           <div key={m.slug}>
             <div
+              onClick={() => toggleModule(m.slug)}
               className={clsx(
                 "group flex items-center gap-1 rounded-lg pr-2 text-sm",
                 active
@@ -86,7 +93,14 @@ export default function Sidebar() {
                 >
                   {stats && stats.percent >= 100 ? "✓" : m.id}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{m.title}</span>
+                <Tooltip
+                  content={m.title}
+                  side="right"
+                  wrapperClassName="min-w-0 flex-1 truncate"
+                  onlyIfTruncated
+                >
+                  {m.title}
+                </Tooltip>
                 {stats && stats.percent > 0 && stats.percent < 100 && (
                   <span className="text-[10px] text-slate-600 tabular-nums">
                     {stats.percent}%
@@ -97,7 +111,10 @@ export default function Sidebar() {
                 type="button"
                 aria-label={expanded ? "Collapse lessons" : "Expand lessons"}
                 aria-expanded={expanded}
-                onClick={() => toggleModule(m.slug)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleModule(m.slug);
+                }}
                 className="shrink-0 rounded p-1 text-slate-600 hover:bg-white/10 hover:text-slate-300"
               >
                 <svg
@@ -116,33 +133,44 @@ export default function Sidebar() {
                 </svg>
               </button>
             </div>
-            {expanded && (
-              <div className="mt-0.5 mb-1 ml-[1.875rem] space-y-0.5 border-l border-white/10 pl-3">
-                {m.lessons.map((l) => {
-                  const href = `/modules/${m.slug}/lessons/${l.slug}`;
-                  const lessonActive = pathname === href;
-                  const done = !!completedLessons[`${m.slug}/${l.slug}`];
-                  return (
-                    <Link
-                      key={l.slug}
-                      href={href}
-                      onClick={() => setOpen(false)}
-                      className={clsx(
-                        "block truncate rounded-md px-2 py-1.5 text-[13px]",
-                        lessonActive
-                          ? "bg-sky-500/10 font-medium text-sky-300"
-                          : "text-slate-500 hover:bg-white/5 hover:text-slate-300",
-                      )}
-                    >
-                      {done && !lessonActive && (
-                        <span className="mr-1.5 text-emerald-500">✓</span>
-                      )}
-                      {l.title}
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+            <AnimatePresence initial={false}>
+              {expanded && (
+                <motion.div
+                  key="lessons"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-0.5 mb-1 ml-[1.875rem] space-y-0.5 border-l border-white/10 pl-3">
+                    {m.lessons.map((l) => {
+                      const href = `/modules/${m.slug}/lessons/${l.slug}`;
+                      const lessonActive = pathname === href;
+                      const done = !!completedLessons[`${m.slug}/${l.slug}`];
+                      return (
+                        <Link
+                          key={l.slug}
+                          href={href}
+                          onClick={() => setOpen(false)}
+                          className={clsx(
+                            "block truncate rounded-md px-2 py-1.5 text-[13px]",
+                            lessonActive
+                              ? "bg-sky-500/10 font-medium text-sky-300"
+                              : "text-slate-500 hover:bg-white/5 hover:text-slate-300",
+                          )}
+                        >
+                          {done && !lessonActive && (
+                            <span className="mr-1.5 text-emerald-500">✓</span>
+                          )}
+                          {l.title}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         );
       })}
