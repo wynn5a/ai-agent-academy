@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson01: Lesson = {
   slug: "the-loop-that-makes-an-agent",
   title: "The Loop That Makes an Agent",
-  minutes: 25,
+  minutes: 35,
   summary:
     "A chatbot maps one input to one output. An agent runs a loop where the model itself decides which tools to call, in what order, until the task is done. The loop is ~20 lines; everything else in this module is guardrails around it.",
   sections: [
@@ -59,7 +59,7 @@ export const lesson01: Lesson = {
       code: `import anthropic
 
 client = anthropic.Anthropic()
-MODEL = "claude-sonnet-4-5"
+MODEL = "claude-sonnet-5"
 
 TOOLS = [
     {
@@ -122,6 +122,24 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
       text: "Memorize this shape: `while not done: response = llm(messages + tools); if tool_calls: execute, append results; else: done`. **Everything else in agent engineering is guardrails around this loop** — termination, budgets, context discipline, tracing, recovery. When a framework shows you an 'AgentExecutor', this loop is what's inside.",
     },
     {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "The loop above ships, works for weeks — then you enable adaptive thinking on the model and every run crashes with `AttributeError: 'ThinkingBlock' object has no attribute 'text'`. Where's the latent bug?",
+      code: `if resp.stop_reason != "tool_use":
+    return resp.content[0].text          # model chose to stop`,
+      answer:
+        "`resp.content[0]` assumes the first content block is text. On thinking-enabled models the response often *starts with a thinking block*, so `content[0]` has no `.text`. The bug was always latent — content is a **list of typed blocks** (Module 1, Lesson 6), and position is never a contract. Robust extraction: `next(b.text for b in resp.content if b.type == \"text\")`, with a sensible fallback if no text block exists. The senior habit this trains: iterate content by block *type*, everywhere, always — the block mix changes across models and features, and positional indexing is how upgrades break agents.",
+    },
+    {
+      type: "heading",
+      text: "The inner loop lives inside an outer conversation",
+    },
+    {
+      type: "paragraph",
+      text: "A distinction that sounds pedantic until an interviewer probes it: **the agent loop runs entirely within one user turn**. The user asks a question; your loop makes N model calls (each a full stateless request!); the user sees one answer. When they ask a follow-up, you append it to the *same* messages array — tool calls, results, and all — and the inner loop starts again with that history as context. Two design consequences: the follow-up turn inherits every token of the previous turn's tool spelunking (context cost compounds across user turns, which is why Lesson 5's compaction exists), and your termination budgets (Lesson 4) should be **per user turn**, not per conversation — a fresh question deserves a fresh budget.",
+    },
+    {
       type: "heading",
       text: "Watch the path emerge",
     },
@@ -166,11 +184,48 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
         "Two things to internalize from the sample traces: the path differs per question with zero code changes (that's the agent-ness), and the model may request **multiple tool calls in a single turn** — your executor must answer every one of them, and can run them concurrently since they arrived together.",
     },
     {
+      type: "exercise",
+      kind: "predict",
+      prompt:
+        "Run 3: the user asks \"What did I write about Kubernetes?\" — but there are no Kubernetes notes at all, so `search_notes` returns an empty list. Predict the plausible trajectories through the loop, from best to worst.",
+      answer:
+        "**Best:** the model tries one or two query variations (`k8s`, `kubernetes deployment`), gets empty results each time, and answers honestly: 'I found no notes about Kubernetes.' **Common:** it burns several iterations on near-identical queries before giving up — wasted spend, correct answer. **Worst:** it stops searching and *hallucinates* a plausible summary of notes that don't exist — because an empty result gives it nothing to ground on and nothing forbidding invention. The lesson: **absence of evidence needs to be an explicit observation.** Return `\"No results for 'kubernetes'. The notes database contains topics like: rate limits, caching, backoff.\"` instead of `[]` — a model told what *does* exist stops guessing about what doesn't. This 'empty result → hallucination' trajectory is a favorite interview probe because the fix is tool design, not prompting.",
+    },
+    {
+      type: "callout",
+      kind: "insight",
+      title: "Interview angle",
+      text: "\"What *is* an agent?\" deserves a one-sentence answer with teeth: **an LLM calling tools in a loop, where the model — not your code — decides the next action.** Then immediately name the price of that autonomy: unknown iteration count → unknown cost, latency, and a new failure surface (spirals, runaway spend, hallucinated grounding). Interviewers are listening for whether you volunteer the *costs* unprompted; the definition alone is the junior half of the answer.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** Your team's chatbot answers from a fixed RAG pipeline today. Product wants it to 'become an agent.' What actually changes in the code, and what new failure modes must you handle before shipping?",
+      answer:
+        "Code change is deceptively small: expose retrieval (and whatever else) as *tools*, put the tool round-trip in a loop, let the model sequence calls — control flow moves from your `if/else` into the model's choices. The real work is the new failure surface, and listing it unprompted is the senior signal: (1) **unbounded iteration** — needs caps, cost budgets, deadlines (Lesson 4); (2) **variable latency** — the UX must show progress, because p95 goes from 2s to 30s; (3) **tool spirals** — repeated failing calls need escalating defenses (Lesson 5); (4) **emergent paths** — debugging needs per-run traces, not request logs; (5) **cost variance** — per-query cost goes from constant to a distribution; finance will ask. Then the counter-question that scores points: *does the path actually vary per query?* If 90% of queries take the same retrieve→answer path, the chatbot was already the right architecture — agent-ify the 10% behind a router. **Follow-up probe:** \"how do you prove the agent beats the pipeline?\" → offline eval set + A/B on quality, cost, latency — never vibes.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** In the traced Run 2, the model issued two `search_notes` calls in one turn, then two `read_note` calls the next turn. An interviewer asks: \"why didn't it issue all four at once, and what does that tell you about parallelism in agent loops?\"",
+      answer:
+        "Because the second pair **depends on the first pair's output** — the model can't know which note ids to read until search results come back. Parallelism in an agent loop is bounded by the *data dependency graph*, and the model discovers that graph as it goes: independent calls batch into one turn (both searches), dependent calls must wait an iteration. Three things this implies for your harness: (1) execute same-turn calls concurrently — they're independent by construction, the model asked for them together; (2) you can't 'optimize' cross-turn sequencing from the outside without breaking causality; (3) latency floor = depth of the dependency chain × (model latency + tool latency), so reducing *chain depth* (better tools that answer in one hop, e.g. `search_and_read`) beats making individual calls faster. **Follow-up probe:** \"when would you merge search+read into one tool?\" → when traces show the pair is nearly always called in sequence — that's a workflow hiding inside your agent.",
+    },
+    {
       type: "keypoints",
       points: [
         "Agent = LLM + tools + loop, with **the model choosing the path**. Chatbot/workflow = your code chooses.",
         "The loop is: call model → if `tool_use`, execute and append results → repeat → else return the text.",
-        "The model can emit several tool calls per turn — answer all of them; they're safe to parallelize.",
+        "The model can emit several tool calls per turn — answer all of them; they're safe to parallelize. Cross-turn sequencing is the model's data-dependency discovery — don't fight it.",
+        "Extract the final answer by block *type*, never by position — `content[0].text` breaks the day thinking blocks appear.",
+        "Empty tool results invite hallucination — return what *does* exist, not `[]`.",
+        "The agent loop runs inside one user turn; budgets are per-turn, and context inherited across turns is why compaction exists.",
         "Flexibility costs you: unknown iteration count means unknown cost, latency, and new failure modes.",
         "Everything that follows in this module is guardrails bolted onto this one loop.",
       ],

@@ -157,4 +157,69 @@ export const quiz02: QuizQuestion[] = [
     explanation:
       "With only end_turn, 'the model went quiet' is ambiguous — was that the answer, a clarifying question, or giving up? A finish tool with a required citations field makes endings verifiable: your code can check the cited paths were actually read this run and nudge the model to finish properly if it stops without calling it. It doesn't physically prevent early stopping — that's what the nudge and budget layers are for.",
   },
+  {
+    question:
+      "An agent loop returns its final answer with `resp.content[0].text`. It works today. Why is this a latent bug, and what's the robust version?",
+    options: [
+      "It's fine — the API guarantees the first content block is always text",
+      "content is a list of typed blocks and position is not a contract — enable thinking (or any feature that adds block types) and content[0] stops being text; extract by type: next(b.text for b in resp.content if b.type == 'text')",
+      "The bug is performance: indexing a list is slower than attribute access",
+      "content[0] returns the system prompt, not the answer",
+    ],
+    correct: 1,
+    explanation:
+      "The block mix changes across models and features — thinking blocks commonly arrive first on thinking-enabled models. Iterating by block type is the same discipline everywhere in the API: tool_use blocks, text blocks, and thinking blocks are found by type, never by position. Positional indexing is how model upgrades break agents that 'worked for months.'",
+  },
+  {
+    question:
+      "You add context compaction that rewrites old tool results into stubs before every API call. Context shrinks, but per-run cost goes UP. What happened?",
+    options: [
+      "Compaction increases output tokens, which cost more than input",
+      "The API charges a fee per modified message",
+      "Prompt caching is an exact prefix match — every compaction pass edits early messages, invalidating the cached prefix, so each call re-processes the whole history at full price instead of reading ~90% from cache; compact rarely and in batches on a threshold instead",
+      "Stubs confuse the model into making more tool calls",
+    ],
+    correct: 2,
+    explanation:
+      "The proof lives in usage fields: cache_read_input_tokens collapses to ~0 while full-price input_tokens balloons. Tokens saved by stubbing are dwarfed by losing the ~0.1× cache discount on everything else. Batch the rewrites, keep everything after the compaction point byte-stable, and let the cache re-establish — a classic amortization trade.",
+  },
+  {
+    question:
+      "What's the correct relationship between telling the model its remaining budget ('~4 tool calls left, start converging') and enforcing the budget in your loop?",
+    options: [
+      "Telling the model replaces enforcement — a well-prompted model always respects budgets",
+      "They're complementary: model awareness is advisory (it improves pacing and makes best-effort answers better because the model chooses what to sacrifice), while harness enforcement at the top of the loop is the actual guarantee",
+      "Never tell the model — knowing about budgets makes it rush and degrades quality",
+      "Enforcement is unnecessary if you use a finish tool",
+    ],
+    correct: 1,
+    explanation:
+      "An agent told to wrap up may still try one more call — awareness without enforcement is a suggestion. Enforcement without awareness means exhaustion always lands as a surprise mid-investigation, producing worse salvage answers. Newer frontier models formalize the advisory half as a native task-budget countdown; the harness check remains the backstop either way.",
+  },
+  {
+    question:
+      "Your loop bails out mid-iteration when the budget trips — right after an assistant response containing tool_use blocks — and the final wrap-up call returns a 400. Why, and what's the fix?",
+    options: [
+      "The API blocks all requests after a budget field is set",
+      "The wrap-up call used the wrong model tier",
+      "The history ends with unanswered tool_use blocks, violating the strict tool_use/tool_result pairing; either check the budget at the top of the loop (before paying for a response you'd discard), or append synthetic is_error tool_results ('not executed: budget exhausted') to make the array legal first",
+      "best_effort must always start a fresh conversation with no history",
+    ],
+    correct: 2,
+    explanation:
+      "Any code path that abandons the loop mid-iteration — budget exits, exception handlers, deadlines — must leave the message array in an API-legal state: every tool_use answered. The top-of-loop check avoids the problem entirely and never pays for a discarded result, which is why it's the canonical placement.",
+  },
+  {
+    question:
+      "A user asks about a topic with no matches, search returns an empty list, and the agent confidently summarizes notes that don't exist. What's the highest-leverage fix?",
+    options: [
+      "Lower the temperature so the model is less creative",
+      "Add 'do not hallucinate' to the system prompt",
+      "Fix the tool: return an explicit absence observation with grounding — 'No results for X. The database contains topics like: A, B, C' — because a model told what does exist stops guessing about what doesn't",
+      "Increase max iterations so the model can search more",
+    ],
+    correct: 2,
+    explanation:
+      "An empty [] gives the model nothing to ground on and nothing forbidding invention — absence of evidence must be made an explicit observation. Telling the model what the corpus actually contains redirects it toward an honest answer (or a better query). This is tool design beating prompt engineering: the same principle as specific error messages, applied to empty results.",
+  },
 ];
