@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson03: Lesson = {
   slug: "tool-calling",
   title: "Tool Calling End-to-End",
-  minutes: 30,
+  minutes: 40,
   summary:
     "The mechanism that turns a text generator into something that can act. Crucial mental model: the model never executes anything — it emits structured JSON, and your code does the work.",
   sections: [
@@ -138,6 +138,90 @@ for item in resp.output:
       text: "One more production detail: the model can request **several tools in one turn** (parallel tool calls). Execute them all — concurrently if you like — and return **all** the `tool_result` blocks in a **single** user message. Splitting results across multiple messages malforms the history and quietly teaches the model to stop parallelizing.",
     },
     {
+      type: "heading",
+      text: "The unhappy path: errors and runaway loops, in code",
+    },
+    {
+      type: "paragraph",
+      text: "Two invariants separate a demo loop from a production one. First: **a tool failure is information, not an exception** — return it as `tool_result` content with `is_error: true` and the model will read the error and adapt (retry with fixed arguments, try another tool, or tell the user). Raise instead, and one flaky API call kills the whole session. Second: **the loop needs its own brakes** — a max-iteration guard and duplicate-call detection — because a confused model can request the same failing tool forever, and each iteration resends the ever-growing history at full price.",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "error-returning executor + guarded loop",
+      code: `MAX_ITERATIONS = 15
+
+def execute_tool(name: str, args: dict) -> tuple[str, bool]:
+    """Returns (content, is_error). Never raises into the loop."""
+    try:
+        return TOOL_IMPLS[name](**args), False
+    except KeyError:
+        return f"Unknown tool: {name}", True
+    except Exception as e:                     # tool bug or bad model args
+        return f"{type(e).__name__}: {e}", True
+
+def run_turn(messages: list) -> str:
+    seen_calls = set()
+    for _ in range(MAX_ITERATIONS):
+        resp = client.messages.create(model="claude-sonnet-5",
+                                      max_tokens=1024,
+                                      tools=TOOLS, messages=messages)
+        if resp.stop_reason != "tool_use":
+            return resp.content[0].text
+
+        messages.append({"role": "assistant", "content": resp.content})
+        results = []
+        for block in resp.content:
+            if block.type != "tool_use":
+                continue
+            sig = (block.name, json.dumps(block.input, sort_keys=True))
+            if sig in seen_calls:              # loop detection
+                results.append({"type": "tool_result",
+                                "tool_use_id": block.id, "is_error": True,
+                                "content": "Repeated identical call — "
+                                           "change approach or answer with "
+                                           "what you have."})
+                continue
+            seen_calls.add(sig)
+            content, is_err = execute_tool(block.name, block.input)
+            results.append({"type": "tool_result", "tool_use_id": block.id,
+                            "content": content, "is_error": is_err})
+        messages.append({"role": "user", "content": results})
+    raise RuntimeError("agent exceeded max iterations")`,
+      explanation:
+        "Notice the repeated-call handler still returns a `tool_result` for the block — dropping it would 400. Transient failures (network blips inside a tool) get retried **inside `execute_tool`**, not by re-calling the model: model calls are the expensive resource, tool executions are cheap. In production the iteration cap is joined by a token/dollar budget check (Lesson 5) — count both.",
+    },
+    {
+      type: "heading",
+      text: "Designing the tool surface: what seniors get probed on",
+    },
+    {
+      type: "list",
+      items: [
+        "**Tool results are prompt text you pay for on every subsequent turn.** A tool that returns a 40KB JSON dump doesn't just cost tokens once — it rides in the history for the rest of the session. Return the *minimum useful* result: filter, truncate with a note, or return an id the model can drill into with a follow-up call.",
+        "**Few well-scoped tools beat many overlapping ones.** Every schema is prompt space, and near-duplicate tools (`search_users`, `find_user`, `lookup_user_by_email`) cause selection errors. Consolidate with parameters; a good heuristic is that each tool should be explainable to a new engineer in one sentence without mentioning another tool.",
+        "**Descriptions carry the *when*, not just the *what*.** 'Get current weather for a city' selects worse than adding 'Use whenever the user asks about weather, temperature, or outdoor conditions. Returns Celsius.' Trigger conditions in the description measurably improve tool choice.",
+        "**Mark the safety boundary in the harness, not the prompt.** Reversible read-only tools can run automatically and in parallel; hard-to-reverse ones (send email, delete, pay) get gated behind confirmation in *your code* — the model's judgment is not an access-control mechanism.",
+      ],
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "This handles the tool turn. It works in every test — until the model starts making parallel calls in production, and then requests fail with a 400. Why?",
+      code: `if resp.stop_reason == "tool_use":
+    messages.append({"role": "assistant", "content": resp.content})
+    block = next(b for b in resp.content if b.type == "tool_use")
+    output = run_tool(block.name, block.input)
+    messages.append({"role": "user", "content": [{
+        "type": "tool_result",
+        "tool_use_id": block.id,
+        "content": output,
+    }]})`,
+      answer:
+        "`next(...)` grabs **only the first** `tool_use` block. When the model requests two tools in one turn, the second request goes unanswered — and the API rejects the follow-up because every `tool_use` in the assistant turn must have a matching `tool_result`. Tests passed because simple prompts never triggered parallel calls. Fix: iterate over **all** `tool_use` blocks and return all results in one user message. This bug is common enough that interviewers plant it deliberately.",
+    },
+    {
       type: "exercise",
       kind: "spot-the-bug",
       prompt:
@@ -174,13 +258,42 @@ for item in resp.output:
       text: "\"Whiteboard a tool-calling loop\" is the single most common agent-engineering exercise. The invariants they're checking: loop on `stop_reason`, resend the assistant turn verbatim, strict id pairing, all parallel results in one message, errors returned as `tool_result` content so the model can recover, and a max-iteration guard. If you can also say *why* each invariant exists, you're above the bar.",
     },
     {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Whiteboard a tool-calling loop.\" Narrate the invariants as you write — and anticipate the probes.",
+      answer:
+        "Skeleton: loop → call API with `tools` + full history → if `stop_reason != \"tool_use\"`, return the text → else append the assistant turn **verbatim** → execute every `tool_use` block → append one user message containing all `tool_result`s with matching ids → repeat. Invariants to say *while writing*: (1) resend the assistant turn exactly, including thinking blocks; (2) strict id pairing — every request answered, nothing extra, or 400; (3) all parallel results in one message; (4) errors go back as `is_error: true` content, never exceptions; (5) max-iteration guard plus a token budget; (6) the model never executes anything — your code is the boundary. Probes to expect: \"why does the API 400 on a missing result?\" (causal record integrity — the model must see an answer for everything it asked), \"where do you retry a flaky tool?\" (inside the executor, not by re-calling the model), and \"what if two tools must run in order?\" (the model sequences them across turns; you never reorder within one).",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** A tool call fails with a transient network error. Walk through exactly where retry logic belongs and why.",
+      answer:
+        "Three layers, and mixing them up is the failure mode: (1) **inside the tool executor** — retry the HTTP call to the downstream service with backoff; this is cheap and invisible to the model; (2) **as a `tool_result` with `is_error: true`** once executor retries are exhausted — the model decides whether to try differently or degrade gracefully; (3) **around the model API call itself** — backoff for 429/5xx (Lesson 5), completely separate from tool errors. What you never do: throw away the turn and re-call the model hoping for a different tool call (expensive, non-deterministic), or retry a side-effectful tool without an idempotency key (you might send the email twice). **Follow-up probe:** \"the tool is `charge_customer` — now what?\" → idempotency key derived from the `tool_use_id`, which is unique per request and stable across your executor retries.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** How do you stop a runaway agent? List the brakes in the order they should fire.",
+      answer:
+        "(1) **Duplicate-call detection** — same tool + identical arguments twice means the model is stuck; return an `is_error` result telling it to change approach. (2) **Max iterations** per turn (10–20) — a hard ceiling on loop passes. (3) **Token/dollar budget** per session, checked against accumulated `usage` after every call — this is the one that caps cost even when each iteration looks 'new'. (4) **Wall-clock timeout** for the whole turn. (5) **Human escalation** as the terminal state: return what you have with an explanation, don't just die. Senior nuance: the guards must fire *gracefully* — a budget-exhausted agent should append a final message asking the model to conclude with available information, not throw mid-conversation. **Follow-up probe:** \"which guard catches a model alternating between two different failing calls?\" → not duplicate detection (arguments differ) — the iteration cap and budget are the backstop; smarter harnesses track failure *rate*, not just identity.",
+    },
+    {
       type: "keypoints",
       points: [
         "The model **requests**; your code **executes**. All side effects are yours.",
         'Loop on `stop_reason == "tool_use"`; resend assistant turns verbatim; match `tool_use_id` exactly.',
         "Multiple tool calls can arrive in one turn — answer all of them.",
-        "Tool errors go back as `tool_result` content (with `is_error: true` on Anthropic) so the model can recover.",
-        "Invest in tool descriptions like you invest in prompts — they are prompts.",
+        "Tool errors go back as `tool_result` content (with `is_error: true` on Anthropic) so the model can recover; loops need iteration caps, duplicate-call detection, and budgets.",
+        "Tool results are prompt text you re-pay for every turn — return the minimum useful result.",
+        "Invest in tool descriptions like you invest in prompts — they are prompts. Say *when* to use the tool, not just what it does.",
       ],
     },
   ],

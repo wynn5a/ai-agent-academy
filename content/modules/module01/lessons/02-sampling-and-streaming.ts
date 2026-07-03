@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson02: Lesson = {
   slug: "sampling-and-streaming",
   title: "Controlling Generation: Sampling, Thinking & Streaming",
-  minutes: 25,
+  minutes: 35,
   summary:
     "How a token actually gets picked — and how the dials changed. Classic sampling (temperature, top_p) still runs most of the industry, but 2026 frontier models replaced those knobs with adaptive thinking and an effort parameter. Streaming turns dead air into perceived speed.",
   sections: [
@@ -70,6 +70,60 @@ for block in resp.content:
     },
     {
       type: "heading",
+      text: "Every response tells you why it stopped",
+    },
+    {
+      type: "paragraph",
+      text: "Every response carries a `stop_reason`, and production code **switches on it before reading content** — most silent agent failures trace back to code that assumed `end_turn`. Memorize the taxonomy; interviewers use it as a completeness check when you whiteboard a loop.",
+    },
+    {
+      type: "table",
+      headers: ["stop_reason", "Meaning", "What your code does"],
+      rows: [
+        [
+          "`end_turn`",
+          "Model finished naturally",
+          "Read the content; the happy path",
+        ],
+        [
+          "`max_tokens`",
+          "Hit *your* output cap mid-thought",
+          "Output is truncated — raise the cap, stream, or treat as incomplete. Never parse truncated JSON.",
+        ],
+        [
+          "`tool_use`",
+          "Model is requesting tools",
+          "Execute them, append results, loop (Lesson 3)",
+        ],
+        [
+          "`stop_sequence`",
+          "Hit a custom stop string you configured",
+          "Expected if you set one; check which via `stop_sequence`",
+        ],
+        [
+          "`pause_turn`",
+          "A server-side tool loop paused (long web search etc.)",
+          "Append the assistant turn and re-send to resume — don't add a 'continue' message",
+        ],
+        [
+          "`refusal`",
+          "Model or safety layer declined (HTTP 200!)",
+          "Don't loop or blind-retry; `stop_details` carries the category. Surface or route to a fallback.",
+        ],
+        [
+          "`model_context_window_exceeded`",
+          "Conversation no longer fits the window",
+          "Not retryable as-is — truncate or summarize history first",
+        ],
+      ],
+    },
+    {
+      type: "callout",
+      kind: "warning",
+      text: "The two everyone forgets: a **refusal is a 200**, so exception handling never sees it — only a `stop_reason` check does. And `max_tokens` truncation is silent — downstream JSON parsing fails mysteriously unless you check for it at the source. `stop_details` is populated only when `stop_reason` is `refusal`; it's `null` otherwise, so guard before reading it.",
+    },
+    {
+      type: "heading",
       text: "Streaming",
     },
     {
@@ -104,7 +158,78 @@ for event in stream:
     if event.type == "response.output_text.delta":
         print(event.delta, end="", flush=True)`,
       explanation:
-        "Streaming complicates tool calling slightly: tool-call arguments arrive as partial JSON fragments you must accumulate until the block completes. The SDKs' helper events (`content_block_stop`, accumulated snapshots) handle this — use them rather than parsing fragments yourself. On newer Claude models, thinking streams too (as thinking deltas) — surface it as a progress indicator or ignore it, but capture the final message either way.",
+        "On newer Claude models, thinking streams too (as thinking deltas) — surface it as a progress indicator or ignore it, but capture the final message either way.",
+    },
+    {
+      type: "heading",
+      text: "What SSE actually looks like on the wire",
+    },
+    {
+      type: "paragraph",
+      text: "Seniors get asked to describe the event protocol, not just call the helper. The response is a long-lived HTTP response with `Content-Type: text/event-stream`; each event is a typed frame. The lifecycle: one `message_start`, then for each content block a `content_block_start` → many `content_block_delta` → `content_block_stop`, then `message_delta` (carrying the final `stop_reason` and usage) and `message_stop`.",
+    },
+    {
+      type: "code",
+      language: "text",
+      title: "raw SSE frames (abridged)",
+      code: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_...","usage":{...}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":12}}
+
+event: message_stop
+data: {"type":"message_stop"}`,
+      explanation:
+        "Delta types vary by block: `text_delta` for text, `thinking_delta` for reasoning, and — the one that trips people up — `input_json_delta` for tool-call arguments.",
+    },
+    {
+      type: "heading",
+      text: "Streaming + tool calls: accumulating partial JSON",
+    },
+    {
+      type: "paragraph",
+      text: "When a streamed response contains a tool call, the arguments arrive as **fragments of a JSON string** (`input_json_delta`), not as parseable objects. A fragment might be `{\"ci` — parsing it throws. The rule: accumulate fragments per block index until `content_block_stop`, then parse once. This is a classic live-coding trap.",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "accumulate input_json_delta until the block closes",
+      code: `import json
+
+tool_calls = {}   # block index -> {"name": ..., "id": ..., "buf": ...}
+
+with client.messages.stream(model="claude-sonnet-5", max_tokens=1024,
+                            tools=TOOLS, messages=messages) as stream:
+    for event in stream:
+        if event.type == "content_block_start" and \\
+                event.content_block.type == "tool_use":
+            tool_calls[event.index] = {"name": event.content_block.name,
+                                       "id": event.content_block.id, "buf": ""}
+        elif event.type == "content_block_delta":
+            if event.delta.type == "input_json_delta":
+                tool_calls[event.index]["buf"] += event.delta.partial_json
+            elif event.delta.type == "text_delta":
+                print(event.delta.text, end="", flush=True)
+        elif event.type == "content_block_stop" and event.index in tool_calls:
+            call = tool_calls[event.index]
+            call["input"] = json.loads(call["buf"])   # NOW it's parseable
+
+final = stream.get_final_message()   # or just use this — the SDK accumulated it`,
+      explanation:
+        "In practice you let the SDK do this (`get_final_message()` returns fully-formed `tool_use` blocks), but you must be able to explain the manual version: fragments keyed by block index, parse only at `content_block_stop`, and multiple tool calls can interleave as separate indices in one response.",
     },
     {
       type: "callout",
@@ -113,11 +238,40 @@ for event in stream:
       text: 'Expect "what does temperature actually do?" (logit scaling before softmax — not \'creativity magic\') followed by "how do you control a model that doesn\'t expose it?" The strong answer covers both eras: distribution-shaping knobs where they exist, thinking/effort budgets on 2026 frontier models, and time-to-first-token as the streaming UX metric.',
     },
     {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Explain what temperature does — precisely, not 'it makes the model more creative.'\"",
+      answer:
+        "At each step the model produces logits over the vocabulary. Temperature **divides the logits before softmax**: T < 1 sharpens the distribution (probability mass concentrates on the top tokens), T > 1 flattens it (tail tokens become viable), T → 0 approaches argmax. It doesn't change what the model *knows* — it changes how the next token is *picked* from what the model already believes. Two senior add-ons: T=0 still isn't perfectly deterministic (GPU non-determinism, ties, batching effects), and temperature interacts multiplicatively with top_p, which is why you tune one, not both. **Follow-up probe:** \"so why did frontier models remove it?\" → the useful control turned out to be *how much work* the model does (thinking/effort), not the shape of the token distribution — and prompting steers style better than distribution-flattening does.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** Your agent's p50 total latency is 6s and users complain it feels slow. What metric do you actually optimize, and with what levers?",
+      answer:
+        "**Time-to-first-token (TTFT)**, not total latency — perceived speed is about when something starts appearing. Levers in order: (1) stream and render deltas immediately (flush, no buffering); (2) prompt caching — a cache hit skips prefill on the huge stable prefix, and prefill dominates TTFT for long prompts; (3) shrink the prompt (trim history, defer tool schemas); (4) a faster model tier for the first visible response; (5) UX tricks — show thinking-in-progress indicators when the model reasons before answering. Total latency still matters for pipeline stages nobody watches; TTFT matters where a human is staring at the screen. **Follow-up probe:** \"streaming is on but TTFT is still 4s — why?\" → long uncached prefill (check `cache_read_input_tokens`), or the model is thinking before emitting text.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** A PM asks for 'more creative, varied' marketing copy from a model that exposes no sampling parameters. What do you do?",
+      answer:
+        "Move the variety into the **prompt and the harness**: describe the variety you want ('propose 3 directions with distinct voices, avoid the phrasing of previous outputs'), inject variation deliberately (rotate style exemplars, seeds of context, persona instructions per request), or generate N candidates and pick/judge. On models that still expose temperature, you'd raise it — but say explicitly that prompt-level steering usually beats distribution-flattening even there, because temperature adds *randomness*, not *taste*. **Follow-up probe:** \"how do you evaluate that the outputs actually got more varied?\" → embedding-distance or n-gram overlap across samples, plus human preference evals — which is Module 5's territory, and saying so shows you know the map.",
+    },
+    {
       type: "keypoints",
       points: [
         "Sampling picks from a probability distribution; temperature scales it, top_p truncates it. Where both exist, tune one.",
         "2026 frontier Claude models removed sampling params (400 if sent) — control is adaptive thinking + `output_config.effort`.",
-        "`max_tokens` is a guardrail; detect truncation via `stop_reason`.",
+        "Switch on `stop_reason` before reading content: `end_turn`, `max_tokens`, `tool_use`, `pause_turn`, `refusal` (an HTTP 200!), `model_context_window_exceeded`.",
+        "Streamed tool arguments arrive as `input_json_delta` fragments — accumulate per block index, parse only at `content_block_stop`.",
         "Streaming = SSE deltas; time-to-first-token is the UX metric that matters.",
         "Always capture the final usage/message object after a stream completes.",
       ],

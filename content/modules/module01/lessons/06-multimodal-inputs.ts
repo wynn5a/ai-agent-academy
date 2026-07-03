@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson06: Lesson = {
   slug: "multimodal-inputs",
   title: "Beyond Text: Images, PDFs & Files",
-  minutes: 15,
+  minutes: 25,
   summary:
     "Real agent tasks aren't text-only: screenshots in bug reports, invoices as PDFs, documents to extract from. Multimodal input is just more content-block types in the same messages array.",
   sections: [
@@ -34,7 +34,11 @@ resp = client.messages.create(
     }],
 )`,
       explanation:
-        "Put media blocks **before** the text that asks about them. Images are billed as input tokens — on the order of ~1,500 tokens for a typical image, more at high resolution — so an image-heavy conversation eats the context window fast. Resize client-side when full fidelity isn't needed.",
+        "Put media blocks **before** the text that asks about them. Images are billed as input tokens, and the count scales with resolution.",
+    },
+    {
+      type: "paragraph",
+      text: "Do the image-token math out loud when asked — it's a resolution question, not a flat fee. A typical image costs on the order of **~1,600 input tokens**; current high-resolution models accept much larger images (up to ~2,500px on the long edge) and a full-resolution image can run to **~4,800 tokens — roughly 3×**. At $3/MTok that's still under 2¢ per image, but three things compound it: images ride in the *history* and get re-billed every turn of the conversation, they eat context-window budget, and at 10K images/day the difference between 1.6K and 4.8K tokens is real money. The lever is **client-side resizing**: downsample to the smallest resolution that preserves what the model needs (reading a screenshot's error text needs far less than reading a dense schematic), and pull the image out of history once it's been discussed.",
     },
     {
       type: "paragraph",
@@ -76,7 +80,7 @@ resp = client.messages.create(
     }],
 )`,
       explanation:
-        "Notice the combo: a `document` block **plus** structured outputs from Lesson 4 — multimodal extraction with a guaranteed shape is the pattern behind half of real-world document automation. Mind the limits (tens of MB per request, page caps per model) and count tokens on big documents before sending.",
+        "Notice the combo: a `document` block **plus** structured outputs from Lesson 4 — multimodal extraction with a guaranteed shape is the pattern behind half of real-world document automation. Know the concrete limits: requests cap around **32 MB**, PDFs at roughly **600 pages** on large-context models (about 100 on smaller ones), and the base64 string must have no newlines. Count tokens on big documents before sending — a long PDF bills both its text layer and its rendered pages.",
     },
     {
       type: "paragraph",
@@ -119,10 +123,31 @@ resp = client.beta.messages.create(
       text: 'Multimodal questions are usually cost questions in disguise: "design a pipeline that processes 10K invoices/day." Strong answers combine this lesson\'s blocks — document input + structured outputs + a cheap model tier + batching — and mention the failure modes: page limits, image token costs, and validating extracted numbers client-side.',
     },
     {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** Design the 10K-invoices/day extraction pipeline end-to-end — components, model choice, cost ballpark, and failure handling. This is the capstone question for everything in Module 1.",
+      answer:
+        "**Shape**: invoices arrive during the day, results needed next morning → throughput problem → **Batch API** (50% off). **Per invoice**: a `document` block + **native structured outputs** with a line-items schema (`additionalProperties: false`, enums where possible), on the **small/fast tier** — extraction is exactly what it's for. **Validation layer** (Lesson 4): Pydantic checks the constrained decoder can't make — quantities positive, `sum(line_items) == total` (the killer check: the *document itself* provides ground truth) — failures go to a feedback-retry pass, then escalate to the workhorse tier, then to a human queue. **Cost math aloud**: ~3 pages ≈ 5–8K tokens in, ~500 out → 10K × ~7K = 70M input tokens/day; at ~$1/MTok halved by batch ≈ **$35–40/day** plus ~$12 output — say that unit-economics sentence unprompted and you've cleared the bar. **Ops**: `custom_id` = invoice id, per-item failure handling since batch results succeed/fail individually, morning completion check with a real-time fallback lane, and the Lesson 5 log line per item. **Follow-up probes**: \"invoices are scanned faxes?\" → same API path (the model reads rendered pages), but expect more validation failures — budget a higher escalation rate; \"a 900-page contract?\" → over the page cap: split client-side and merge results.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** A user uploads a 40 MB scanned PDF to your assistant. Walk through what breaks and every option you have.",
+      answer:
+        "First failure: **request size** — 40 MB of base64 (which inflates size ~33%) blows past the ~32 MB request cap, so inlining is out before the model ever sees it. Options in order: (1) **compress/downsample** the scan client-side — scanned PDFs are usually wildly oversized, and 150 DPI grayscale often preserves legibility at a fraction of the bytes; (2) **split into chunks** under the size and page caps, process per-chunk, merge — with an overlap page if answers can straddle boundaries; (3) **Files API** — solves *re-upload* across requests, but note precisely that it does **not** lift per-request size/page/token limits, a distinction interviewers listen for; (4) if the doc will be queried repeatedly, this is the doorway to **RAG** (Module 3): extract text/regions once, index, retrieve only relevant chunks per question — cheaper than resending 600 pages of rendered scan per query. Also say: scanned means no text layer, so the model works from rendered page images — that's supported, just more tokens and more extraction errors, so validate harder. **Follow-up probe:** \"which option changes if it's 40 MB but only 5 pages?\" → pure resolution problem — downsample; splitting adds nothing.",
+    },
+    {
       type: "keypoints",
       points: [
         "`content` is a list of typed blocks — images and PDFs are just more block types in the same stateless array.",
-        "Media blocks go before the text that references them; images cost real input tokens (~1.5K+ each).",
+        "Media blocks go before the text that references them; images cost resolution-dependent input tokens (~1.6K typical, ~4.8K at full high-res) — resize client-side, and remember they're re-billed every turn they stay in history.",
+        "Concrete limits: ~32 MB per request, ~600 PDF pages on large-context models (~100 on smaller) — split or downsample past them.",
         "`document` blocks + structured outputs = schema-guaranteed extraction, the core document-automation pattern.",
         "Base64 for one-offs, URL for hosted media, Files API (`file_id`) for anything reused — plus caching for repeated token cost.",
         "Check per-model limits (request size, page caps) and count tokens before sending large documents.",

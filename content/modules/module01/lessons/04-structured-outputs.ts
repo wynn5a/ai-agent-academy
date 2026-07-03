@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson04: Lesson = {
   slug: "structured-outputs",
   title: "Structured Outputs & JSON Schema",
-  minutes: 20,
+  minutes: 30,
   summary:
     "When you need data, not prose: forcing model output to conform to a schema, and what to do when it doesn't.",
   sections: [
@@ -93,6 +93,23 @@ data = next(b for b in resp.content if b.type == "tool_use").input
     },
     {
       type: "heading",
+      text: "How constrained decoding actually works",
+    },
+    {
+      type: "paragraph",
+      text: "This is the 'why' interviewers dig for. Your JSON schema is **compiled into a grammar** — effectively a state machine over token sequences. At every decoding step, before sampling, the logits of all tokens that would violate the grammar are **masked out** (set to −∞). The model *cannot physically emit* an invalid token: after `\"category\": \"` in our ticket schema, only tokens that begin one of the four enum values are even candidates. The guarantee isn't the model 'trying hard' — it's the sampler being fenced.",
+    },
+    {
+      type: "paragraph",
+      text: "Understanding the mechanism makes the limits obvious. Structure, types, `enum`, `required`, string formats — all expressible as *which token can come next*, so all enforceable. But `\"minimum\": 1, \"maximum\": 5` on a number? When the model has emitted `1`, is that the value 1 (valid), or the start of 15 (invalid)? Value-level constraints aren't decidable token-by-token, so **numeric ranges, string lengths, and recursive schemas are not enforced** by constrained decoding. That is exactly why the validation layer below still exists, even with a 'guaranteed' schema.",
+    },
+    {
+      type: "callout",
+      kind: "tip",
+      text: "Two practical mechanics worth naming in an interview: schema **compilation** happens on the first request (a one-time latency hit; the compiled grammar is cached for ~24h — so keep schemas stable rather than generating them dynamically per request), and `additionalProperties: false` on every object plus a complete `required` list are *preconditions* for constrained decoding — the schema must be closed for the grammar to be finite. The SDK helpers (`parse()` with Pydantic/Zod) quietly strip unsupported constraints from what's sent to the API and enforce them client-side.",
+    },
+    {
+      type: "heading",
       text: "Validate anyway — and repair",
     },
     {
@@ -135,17 +152,58 @@ def extract(text: str, max_retries: int = 2) -> Ticket:
         "(a) **Structured output**: there's no action to perform, you just need the answer in a shape — one schema-constrained call, no loop. (b) **Tool calling**: the model needs information mid-task that only your code can fetch; it requests `get_order_status`, you execute and return the result, and the model continues. The test is 'does the model need my code to *do* something mid-task?' — if no, don't dress extraction up as an agent.",
     },
     {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A teammate ships this extraction schema with native structured outputs and deletes the Pydantic validation layer — 'the API guarantees the schema now.' Weeks later, prod has tickets with `severity: 9`. Why, and what's the minimal correct setup?",
+      code: `SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {"type": "string",
+                     "enum": ["billing", "bug", "feature_request", "other"]},
+        "severity": {"type": "integer", "minimum": 1, "maximum": 5},
+        "summary":  {"type": "string", "maxLength": 200},
+    },
+    "required": ["category", "severity", "summary"],
+    "additionalProperties": False,
+}`,
+      answer:
+        "Constrained decoding enforces structure, types, enums, and required — but **not `minimum`/`maximum` or `maxLength`**, because value-level constraints aren't decidable token-by-token. Depending on the path, those constraints are either rejected or silently stripped before decoding (the SDK's `parse()` helper strips them and validates client-side — which is why the bug only appeared after the validation layer was deleted). So `severity: 9` is schema-valid as far as the grammar is concerned. Minimal correct setup: keep the ranges in the schema as documentation, **keep the Pydantic/Zod validator** for value constraints, and retry with the error fed back on the rare violation. 'Guaranteed structure' never meant 'guaranteed values.'",
+    },
+    {
       type: "callout",
       kind: "insight",
       title: "Interview angle",
       text: "A favorite systems question: \"the model returns JSON that fails validation in production — walk me through your mitigation ladder.\" The ladder: (1) constrain harder (native structured outputs / strict mode, enums, required); (2) validate with Pydantic/Zod and retry **with the validation error fed back**; (3) fall back to a stronger model or deterministic parser; (4) never silently regex-fix. Bonus points for knowing constrained decoding can't enforce numeric ranges — that's the validator's job.",
     },
     {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Your extractor returns syntactically valid, schema-conforming JSON — but the `category` is wrong 15% of the time. Is structured output the fix?\"",
+      answer:
+        "No — and recognizing that is the point of the question. Constrained decoding guarantees **structure, not semantics**: it fences *which tokens can be emitted*, not *whether the answer is right*. A 15% misclassification rate is an accuracy problem, attacked with: better prompts (clear category definitions with boundary examples), few-shot examples of the confusable cases, tightening the enum (are two categories genuinely ambiguous? — merge or add a tiebreaker field), asking the model for a confidence field and routing low-confidence items to a stronger model or a human, and above all **an eval set** so you can measure whether any change helps. Reaching for more schema when the problem is semantics is a junior tell; naming the structure-vs-correctness distinction unprompted is a senior one. **Follow-up probe:** \"how do you build that eval set?\" → label a few hundred real tickets, stratified by category — Module 5 territory.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** For each, tool call or structured output — and defend it in one sentence: (a) sentiment-score 50K reviews, (b) an assistant that files a Jira ticket when asked, (c) a router that picks which of 4 pipelines handles a document, (d) an agent that must check inventory *and then* propose an order.",
+      answer:
+        "(a) **Structured output** — pure extraction, no action, one schema'd call per review (and batch it — Lesson 5). (b) **Tool call** — filing the ticket is a side effect your code performs; the model requests `create_ticket` and your harness gates it. (c) **Structured output with an enum** — routing is classification wearing a trench coat; no mid-task information need. (d) **Tool calling** — the model needs data your code fetches (`check_inventory`) *before* it can decide, so there's a genuine mid-task dependency; the final proposal can then be a forced structured output. The test, every time: *does the model need my code to do something mid-task?* **Follow-up probe:** \"could (d) be one structured call if you fetch inventory first yourself?\" → yes, and that's often better — orchestrate in code when the workflow is fixed; give the model tools when the workflow varies.",
+    },
+    {
       type: "keypoints",
       points: [
         "Native structured outputs (constrained decoding) are the default; the forced tool call is the portable fallback; JSON mode only guarantees syntax.",
-        "Constrain aggressively: enums, min/max, `required` — every constraint removes a failure mode.",
+        "Mechanism: the schema compiles to a grammar that masks invalid tokens' logits at every step — the model *can't* emit invalid structure.",
+        "That's also the limit: value-level constraints (numeric ranges, string lengths) aren't decidable token-by-token — the validator's job, always.",
         "Validate with Pydantic/Zod even when 'guaranteed'; retry with the validation error fed back.",
+        "Structure ≠ semantics: schema conformance says nothing about the answer being right — that takes prompts, evals, and routing.",
         "Extraction ≠ agent. No action needed → one forced structured call.",
       ],
     },

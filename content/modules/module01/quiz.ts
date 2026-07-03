@@ -207,4 +207,69 @@ export const quiz01: QuizQuestion[] = [
     explanation:
       "Two separate costs: upload bandwidth (solved by file_id references) and input-token processing, which recurs every call regardless (solved by prompt caching at ~0.1× for cache reads). 'The server remembers it' contradicts Lesson 1 — the API is stateless.",
   },
+  {
+    question:
+      "A nightly job classifies 800K documents; results are needed by 8 a.m. What's the right API surface, and what do you gain?",
+    options: [
+      "The real-time endpoint with maximum parallelism — batching is only for small jobs",
+      "The Batch API: submit asynchronously, get 50% off all token costs, results typically within an hour (24h max) — retrieved in arbitrary order and matched by custom_id",
+      "The streaming endpoint, since streaming is always cheaper",
+      "The Files API, which processes documents server-side overnight",
+    ],
+    correct: 1,
+    explanation:
+      "Anything that can wait belongs on the Batch API: half price on every token, stacking with cheap-tier routing and caching. The two operational rules: results are unordered (key by custom_id, never position) and each item carries its own succeeded/errored status.",
+  },
+  {
+    question:
+      "While streaming a response, your code calls json.loads() on each tool-argument delta as it arrives, and crashes. What's actually on the wire, and what's the fix?",
+    options: [
+      "Complete JSON objects per event — the crash must be a network bug",
+      "input_json_delta events carrying fragments of a JSON string (e.g. '{\"ci') — accumulate fragments per block index and parse only when content_block_stop arrives (or let the SDK's final-message helper do it)",
+      "Base64-encoded arguments that need decoding first",
+      "The arguments arrive only after the stream ends, in a separate HTTP response",
+    ],
+    correct: 1,
+    explanation:
+      "Streamed tool arguments arrive as partial JSON string fragments — individually unparseable by design. Buffer per block index until the block closes, then parse once. Multiple parallel tool calls interleave as separate indices.",
+  },
+  {
+    question:
+      "Inside the agent loop, a tool raises an exception (file not found). What does production-grade code do?",
+    options: [
+      "Let the exception propagate — the session should fail loudly",
+      "Silently drop that tool_use block and answer the others",
+      "Catch it and return a tool_result with the error text and is_error: true, so the model can read the failure and adapt — while a max-iteration guard prevents infinite retry loops",
+      "Immediately re-call the model without any tool_result so it can try again",
+    ],
+    correct: 2,
+    explanation:
+      "A tool failure is information for the model, not an exception for your process. Dropping the block malforms history (400 — every tool_use needs a matching tool_result), and crashing wastes the session. Return the error as content; pair it with loop guards so a stuck model can't retry forever.",
+  },
+  {
+    question:
+      "Which set of fields belongs in the per-call structured log line of a production LLM service?",
+    options: [
+      "Just the total cost per day — anything more is noise",
+      "The full prompt and completion text of every call, and nothing else",
+      "Request/session ids (yours and the provider's), model, tokens split by cache class (input, output, cache_read, cache_creation), stop_reason, latency + TTFT, retry count, and computed cost",
+      "Only error codes — successful calls don't need logging",
+    ],
+    correct: 2,
+    explanation:
+      "The split by cache class is the detail that matters: total input tokens alone can't reveal that a deploy broke your cache prefix. With these fields you can alert on derivatives — cache hit-rate drops, refusal spikes, cost-per-session drift — which is how incidents get caught before the invoice does.",
+  },
+  {
+    question:
+      "Your traffic is bursty: a flurry of requests every 20 minutes, silence in between. Default 5-minute-TTL caching shows writes but almost no reads. What's the calculus for switching to the 1-hour TTL?",
+    options: [
+      "Never switch — the 1-hour cache is deprecated",
+      "Switch blindly — longer TTL is always cheaper",
+      "The 1-hour TTL doubles the write premium (~2× vs ~1.25×), so it needs roughly 3+ reads per write to pay off — worth it exactly when gaps exceed 5 minutes so the short cache keeps expiring before it's read, as here",
+      "Instead of caching, resend the prompt twice so the provider learns it",
+    ],
+    correct: 2,
+    explanation:
+      "Cache reads cost ~0.1× regardless of TTL; the TTL choice is about the write premium. Steady traffic keeps the 5-minute cache warm for free (reads refresh it), so the long TTL only wins when idle gaps outlast the short TTL — the bursty pattern described. Break-even: 5m TTL pays off on the 2nd request, 1h TTL needs about three.",
+  },
 ];
