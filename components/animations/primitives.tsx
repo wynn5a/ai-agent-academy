@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { motion } from "framer-motion";
+import { useAnimPlayback } from "./controller";
 
 /* ---------- shared SVG primitives for concept animations ---------- */
 
@@ -86,6 +88,7 @@ export function FlowEdge({
   d: string;
   color?: string;
 }) {
+  const { playing } = useAnimPlayback();
   return (
     <path
       d={d}
@@ -95,6 +98,34 @@ export function FlowEdge({
       strokeWidth={1.5}
       strokeDasharray="6 10"
       className="animate-flow-dash"
+      style={{ animationPlayState: playing ? "running" : "paused" }}
     />
+  );
+}
+
+/**
+ * Cumulative step reveal: hidden until `index` is reached, full opacity while
+ * current, dimmed once passed. `dim={1}` keeps passed steps fully visible.
+ */
+export function StepReveal({
+  index,
+  dim = 0.45,
+  children,
+}: {
+  index: number;
+  dim?: number;
+  children: React.ReactNode;
+}) {
+  const { step } = useAnimPlayback();
+  const shown = index <= step;
+  const current = index === step;
+  return (
+    <motion.g
+      initial={false}
+      animate={{ opacity: shown ? (current ? 1 : dim) : 0, x: shown ? 0 : -10 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+    >
+      {children}
+    </motion.g>
   );
 }
