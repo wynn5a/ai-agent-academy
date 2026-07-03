@@ -1,10 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge } from "./primitives";
+import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
+import { useAnimPlayback } from "./controller";
 
 /* ---------- Orchestrator-workers multi-agent ---------- */
 export function MultiAgentAnim() {
+  const { playing } = useAnimPlayback();
   const workers = [
     { label: "Searcher", x: 40, color: "#38bdf8" },
     { label: "Writer", x: 250, color: "#34d399" },
@@ -43,17 +45,26 @@ export function MultiAgentAnim() {
           key={i}
           r={5}
           fill={w.color}
-          animate={{
-            cx: [320, w.x + 70, w.x + 70, 320],
-            cy: [74, 140, 140, 74],
-            opacity: [1, 1, 0.4, 1],
-          }}
-          transition={{
-            duration: 3.6,
-            repeat: Infinity,
-            delay: i * 1.2,
-            ease: "easeInOut",
-          }}
+          initial={false}
+          animate={
+            playing
+              ? {
+                  cx: [320, w.x + 70, w.x + 70, 320],
+                  cy: [74, 140, 140, 74],
+                  opacity: [1, 1, 0.4, 1],
+                }
+              : { cx: w.x + 70, cy: 140, opacity: 0.7 }
+          }
+          transition={
+            playing
+              ? {
+                  duration: 3.6,
+                  repeat: Infinity,
+                  delay: i * 1.2,
+                  ease: "easeInOut",
+                }
+              : { duration: 0.3 }
+          }
         />
       ))}
       <text
@@ -80,22 +91,15 @@ const PATTERNS = [
   { name: "Evaluator–optimizer", desc: "generate → critique → refine loop" },
 ];
 export function WorkflowPatternsAnim() {
-  const CYCLE = PATTERNS.length * 1.4;
+  const { step } = useAnimPlayback();
   return (
     <Stage viewBox="0 0 640 200">
       {PATTERNS.map((p, i) => (
         <motion.g
           key={i}
-          animate={{ opacity: [0.25, 1, 0.25] }}
-          transition={{
-            duration: CYCLE,
-            times: [
-              Math.max(0, (i * 1.4 - 0.4) / CYCLE),
-              (i * 1.4 + 0.5) / CYCLE,
-              Math.min(1, (i * 1.4 + 1.6) / CYCLE),
-            ],
-            repeat: Infinity,
-          }}
+          initial={false}
+          animate={{ opacity: i === step ? 1 : 0.3 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
         >
           <rect
             x={60}
@@ -152,7 +156,6 @@ const MCP_STEPS = [
   { from: "s", text: 'content: [{type: "text", text: "42 rows…"}]' },
 ];
 export function McpHandshakeAnim() {
-  const CYCLE = MCP_STEPS.length * 1.0 + 1.8;
   return (
     <Stage viewBox="0 0 640 300">
       <Node
@@ -193,16 +196,7 @@ export function McpHandshakeAnim() {
         const ltr = s.from === "c";
         const y = 88 + i * 33;
         return (
-          <motion.g
-            key={i}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 1, 0] }}
-            transition={{
-              duration: CYCLE,
-              times: [i / CYCLE, (i + 0.35) / CYCLE, (CYCLE - 0.6) / CYCLE, 1],
-              repeat: Infinity,
-            }}
-          >
+          <StepReveal key={i} index={i}>
             <line
               x1={ltr ? 105 : 535}
               y1={y}
@@ -223,7 +217,7 @@ export function McpHandshakeAnim() {
             >
               {s.text}
             </text>
-          </motion.g>
+          </StepReveal>
         );
       })}
       <defs>
