@@ -21,7 +21,7 @@ export const module01: Module = {
     {
       slug: "messages-are-the-only-state",
       title: "Messages Are the Only State",
-      minutes: 25,
+      minutes: 30,
       summary:
         "The single most important fact in agent engineering: the model is stateless. A 'conversation' is you resending an ever-growing array. Every agent pattern you'll ever build follows from this.",
       sections: [
@@ -42,7 +42,7 @@ messages = []  # <- this list IS the conversation. You own it.
 def chat(user_text: str) -> str:
     messages.append({"role": "user", "content": user_text})
     response = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-5",
         max_tokens=1024,
         system="You are a concise engineering assistant.",
         messages=messages,        # full history, every single time
@@ -55,6 +55,39 @@ print(chat("My name is Wenming."))
 print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
           explanation:
             "Comment out the second `messages.append` and the model instantly 'forgets' — because memory never lived on the server. The `system` prompt rides along outside the array in Anthropic's API; in OpenAI's it's the first message with `role: \"system\"` (or `\"developer\"` in newer APIs).",
+        },
+        {
+          type: "heading",
+          text: "It's just JSON over POST",
+        },
+        {
+          type: "paragraph",
+          text: "The SDK is a thin convenience wrapper. Strip it away and every call in this course is one HTTPS POST with an auth header and a JSON body. Seeing it raw once makes everything else less magical — and it's what you'd write from a language with no official SDK.",
+        },
+        {
+          type: "code",
+          language: "bash",
+          title: "the same call, no SDK",
+          code: `curl https://api.anthropic.com/v1/messages \\
+  -H "x-api-key: $ANTHROPIC_API_KEY" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "model": "claude-sonnet-5",
+    "max_tokens": 1024,
+    "system": "You are a concise engineering assistant.",
+    "messages": [{"role": "user", "content": "My name is Wenming."}]
+  }'`,
+          explanation:
+            "The response is JSON too: a list of content blocks, a `stop_reason`, and a `usage` object with token counts. Everything the SDK gives you — retries, types, streaming helpers — is built on this one endpoint.",
+        },
+        {
+          type: "exercise",
+          kind: "predict",
+          prompt:
+            "In the Python example above, comment out the second `messages.append` (the one that stores the assistant's reply). What does `chat(\"What's my name?\")` return now, and why?",
+          answer:
+            "The model won't know the name. Without appending the assistant turn, the second call sends `[user: \"My name is Wenming.\", user: \"What's my name?\"]` — the model never sees its own earlier reply, and more importantly your history is now missing a turn. Memory lives entirely in the list *you* maintain; the server contributes nothing.",
         },
         {
           type: "heading",
@@ -115,23 +148,37 @@ print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
           title: "count before you send",
           code: `# Anthropic: exact count via the API (free, no generation)
 count = client.messages.count_tokens(
-    model="claude-sonnet-4-5",
+    model="claude-sonnet-5",
     system="You are a concise engineering assistant.",
     messages=messages,
 )
 print(count.input_tokens)
 
-# OpenAI: tiktoken locally
+# OpenAI: tiktoken locally (approximate — encodings lag the newest models)
 import tiktoken
-enc = tiktoken.encoding_for_model("gpt-4o")
+enc = tiktoken.get_encoding("o200k_base")
 n = len(enc.encode("How many tokens is this sentence?"))
 
 # Every response also reports usage — log it on EVERY call:
-resp = client.messages.create(model="claude-sonnet-4-5",
+resp = client.messages.create(model="claude-sonnet-5",
                               max_tokens=256, messages=messages)
 print(resp.usage.input_tokens, resp.usage.output_tokens)`,
           explanation:
             "Production agents log `usage` on every call and aggregate per session/user/day. You cannot manage what you don't measure — cost bugs (like accidentally resending a huge document every turn) hide in unlogged usage.",
+        },
+        {
+          type: "exercise",
+          kind: "predict",
+          prompt:
+            "A 20-turn conversation averages 400 tokens per turn. Roughly how many input tokens does the API call at turn 20 send, and roughly how many cumulative input tokens has the whole session processed?",
+          answer:
+            "Turn 20 resends turns 1–19 (~7,600 tokens) plus the new turn (~400) ≈ **8,000 input tokens** for that single call. Cumulatively the session has processed ~400 × (1+2+…+20) = 400 × 210 = **~84,000 input tokens** — that triangular sum is why cost grows quadratically with conversation length, and why prompt caching (Lesson 5) matters so much for agents.",
+        },
+        {
+          type: "callout",
+          kind: "insight",
+          title: "Interview angle",
+          text: "\"Why do you resend the whole conversation every turn, and what does that cost?\" is a classic screener. Strong answer: the model is stateless; the messages array is the only context; therefore input cost grows quadratically with turns, and the mitigations are prompt caching, truncation, and summarization. Being able to do the token math above out loud is exactly the bar.",
         },
         {
           type: "keypoints",
@@ -197,7 +244,7 @@ print(resp.usage.input_tokens, resp.usage.output_tokens)`,
           title: "streaming with both SDKs",
           code: `# Anthropic
 with client.messages.stream(
-    model="claude-sonnet-4-5", max_tokens=1024,
+    model="claude-sonnet-5", max_tokens=1024,
     messages=[{"role": "user", "content": "Explain SSE in one paragraph."}],
 ) as stream:
     for text in stream.text_stream:
@@ -291,7 +338,7 @@ messages = [{"role": "user", "content": "Should I bike to work in Tokyo today?"}
 
 while True:
     resp = client.messages.create(
-        model="claude-sonnet-4-5", max_tokens=1024,
+        model="claude-sonnet-5", max_tokens=1024,
         tools=TOOLS, messages=messages,
     )
     if resp.stop_reason != "tool_use":
@@ -408,7 +455,7 @@ if msg.tool_calls:
           title: "the tool-call trick for guaranteed structure (Anthropic)",
           code: `# Define your desired OUTPUT as a tool schema, then force the model to "call" it.
 resp = client.messages.create(
-    model="claude-sonnet-4-5", max_tokens=1024,
+    model="claude-sonnet-5", max_tokens=1024,
     tools=[{
         "name": "record_ticket",
         "description": "Record the classified support ticket.",
@@ -560,7 +607,7 @@ def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
           language: "python",
           title: "cache breakpoint after the stable prefix (Anthropic)",
           code: `resp = client.messages.create(
-    model="claude-sonnet-4-5", max_tokens=1024,
+    model="claude-sonnet-5", max_tokens=1024,
     system=[{
         "type": "text",
         "text": LONG_SYSTEM_PROMPT,          # stable across turns
