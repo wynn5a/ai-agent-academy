@@ -2,6 +2,7 @@ import React from "react";
 import type { Section, CalloutKind } from "@/lib/types";
 import { renderInline } from "@/lib/markdown";
 import CodeBlock from "./CodeBlock";
+import Exercise from "./Exercise";
 import ConceptAnimation from "./animations/ConceptAnimation";
 
 const CALLOUT_STYLES: Record<
@@ -166,6 +167,17 @@ export default function SectionRenderer({ sections }: { sections: Section[] }) {
                   ))}
                 </ul>
               </div>
+            );
+          case "exercise":
+            return (
+              <Exercise
+                key={i}
+                kind={s.kind}
+                prompt={s.prompt}
+                code={s.code}
+                language={s.language}
+                answer={s.answer}
+              />
             );
           default:
             return null;

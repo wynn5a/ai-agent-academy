@@ -16,7 +16,15 @@ export type Section =
     }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "animation"; name: AnimationName; caption?: string }
-  | { type: "keypoints"; title?: string; points: string[] };
+  | { type: "keypoints"; title?: string; points: string[] }
+  | {
+      type: "exercise";
+      kind: "predict" | "spot-the-bug" | "concept";
+      prompt: string; // markdown-lite question
+      code?: string; // optional code the question refers to
+      language?: string; // language for the code block (default "python")
+      answer: string; // markdown-lite, revealed on click
+    };
 
 export type AnimationName =
   | "agent-loop"
