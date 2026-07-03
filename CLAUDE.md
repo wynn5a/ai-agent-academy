@@ -18,7 +18,7 @@ pnpm format    # prettier --write .
 
 ## Where things live
 
-- `content/modules/moduleNN.ts` — the single source of truth for a module's lessons, quiz questions, and lab, as plain typed data validated against `lib/types.ts` (`Module`, `Lesson`, `QuizQuestion`, `Lab`, `Section`). To add or edit course content, edit these files directly — no CMS, no build step beyond TypeScript. Module 1 uses the split layout instead: `content/modules/module01/` with `index.ts` (metadata + assembly), one file per lesson under `lessons/`, plus `quiz.ts`, `lab.ts`, `resources.ts` — prefer this layout when a module is next touched.
+- `content/modules/moduleNN/` — the single source of truth for a module's content, as plain typed data validated against `lib/types.ts` (`Module`, `Lesson`, `QuizQuestion`, `Lab`, `Section`). Each module is a directory: `index.ts` (metadata + assembly), one file per lesson under `lessons/NN-<slug>.ts` (exporting `lessonNN: Lesson`), plus `quiz.ts` (`quizNN`), `lab.ts` (`labNN`), and `resources.ts` (`resourcesNN`). To add or edit course content, edit these files directly — no CMS, no build step beyond TypeScript.
 - `content/registry.ts` — aggregates all `moduleNN.ts` files into `modules[]`, plus `PHASES` and `getModule(slug)`.
 - `lib/types.ts` — content schema, including `GATES` (checkpoint requirements) and `PASS_THRESHOLD` (0.8).
 - `lib/progress.tsx` — `ProgressProvider`/`useProgress()`, a React context backed by `localStorage` key `aea-progress-v1`. Hydration happens in a `useEffect` on mount (client-only) — this is intentional, not fixable via lazy `useState` init, since `localStorage` isn't available during SSR.
