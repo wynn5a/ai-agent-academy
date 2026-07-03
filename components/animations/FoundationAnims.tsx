@@ -1,10 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge } from "./primitives";
+import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
+import { useAnimPlayback } from "./controller";
 
 /* ---------- 1. The agent loop: LLM → tool call → result → LLM ---------- */
 export function AgentLoopAnim() {
+  const { playing } = useAnimPlayback();
   return (
     <Stage viewBox="0 0 640 300">
       <Node
@@ -48,11 +50,20 @@ export function AgentLoopAnim() {
         r={6}
         fill="#a78bfa"
         initial={false}
-        animate={{
-          cx: [190, 320, 450, 450, 320, 190],
-          cy: [130, 88, 130, 170, 212, 170],
-        }}
-        transition={{ duration: 3.2, repeat: Infinity, ease: "linear" }}
+        animate={
+          playing
+            ? {
+                cx: [190, 320, 450, 450, 320, 190],
+                cy: [130, 88, 130, 170, 212, 170],
+                opacity: 1,
+              }
+            : { cx: 190, cy: 130, opacity: 0.6 }
+        }
+        transition={
+          playing
+            ? { duration: 3.6, repeat: Infinity, ease: "easeInOut" }
+            : { duration: 0.3 }
+        }
       />
       <motion.text
         x={320}
@@ -61,8 +72,11 @@ export function AgentLoopAnim() {
         fill="#64748b"
         fontSize={11}
         fontFamily="ui-monospace, Menlo, monospace"
-        animate={{ opacity: [0.4, 1, 0.4] }}
-        transition={{ duration: 3.2, repeat: Infinity }}
+        initial={false}
+        animate={playing ? { opacity: [0.4, 1, 0.4] } : { opacity: 0.7 }}
+        transition={
+          playing ? { duration: 3.6, repeat: Infinity } : { duration: 0.3 }
+        }
       >
         loop until done ↺
       </motion.text>
@@ -103,6 +117,7 @@ const TOKENS = [
   "…",
 ];
 export function TokenStreamAnim() {
+  const { playing } = useAnimPlayback();
   return (
     <Stage viewBox="0 0 640 200">
       <Node
@@ -127,16 +142,22 @@ export function TokenStreamAnim() {
       {TOKENS.map((t, i) => (
         <motion.g
           key={i}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: [0, 1, 1, 0], x: [0, 290] }}
-          transition={{
-            duration: 2.8,
-            times: [0, 0.1, 0.9, 1],
-            repeat: Infinity,
-            delay: i * 0.35,
-            repeatDelay: TOKENS.length * 0.35 - 2.8 + 1.2,
-            ease: "linear",
-          }}
+          initial={false}
+          animate={
+            playing ? { opacity: [0, 1, 1, 0], x: [0, 290] } : { opacity: 0 }
+          }
+          transition={
+            playing
+              ? {
+                  duration: 2.8,
+                  times: [0, 0.1, 0.9, 1],
+                  repeat: Infinity,
+                  delay: i * 0.35,
+                  repeatDelay: TOKENS.length * 0.35 - 2.8 + 1.2,
+                  ease: "linear",
+                }
+              : { duration: 0.2 }
+          }
         >
           <rect
             x={165}
@@ -183,6 +204,7 @@ const DIST = [
   { tok: '"France"', p0: 0.02, p1: 0.16 },
 ];
 export function TemperatureAnim() {
+  const { playing } = useAnimPlayback();
   return (
     <Stage viewBox="0 0 640 260">
       {[0, 1].map((mode) => (
@@ -237,14 +259,20 @@ export function TemperatureAnim() {
                   rx={4}
                   fill={mode ? "#fbbf24" : "#38bdf8"}
                   fillOpacity={0.7}
-                  initial={{ width: 0 }}
-                  animate={{ width: [0, 160 * p, 160 * p, 0] }}
-                  transition={{
-                    duration: 4,
-                    times: [0, 0.25, 0.85, 1],
-                    repeat: Infinity,
-                    delay: i * 0.12,
+                  initial={false}
+                  animate={{
+                    width: playing ? [0, 160 * p, 160 * p, 0] : 160 * p,
                   }}
+                  transition={
+                    playing
+                      ? {
+                          duration: 4,
+                          times: [0, 0.25, 0.85, 1],
+                          repeat: Infinity,
+                          delay: i * 0.12,
+                        }
+                      : { duration: 0.3 }
+                  }
                 />
                 <text
                   x={232}
@@ -273,6 +301,7 @@ const SEGS = [
   { label: "new turn", color: "#f87171", w: 60 },
 ];
 export function ContextWindowAnim() {
+  const { step } = useAnimPlayback();
   const placed = SEGS.reduce<Array<(typeof SEGS)[number] & { x: number }>>(
     (rows, s) => {
       const prev = rows.at(-1);
@@ -304,12 +333,7 @@ export function ContextWindowAnim() {
         strokeWidth={1.5}
       />
       {placed.map((s, i) => (
-        <motion.g
-          key={i}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: i * 0.5, duration: 0.4 }}
-        >
+        <StepReveal key={i} index={i} dim={1}>
           <motion.rect
             x={58 + s.x}
             y={47}
@@ -319,9 +343,9 @@ export function ContextWindowAnim() {
             fillOpacity={0.35}
             stroke={s.color}
             strokeOpacity={0.6}
-            initial={{ width: 0 }}
-            animate={{ width: s.w - 4 }}
-            transition={{ delay: i * 0.5, duration: 0.45 }}
+            initial={false}
+            animate={{ width: i <= step ? s.w - 4 : 0 }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
           />
           <text
             x={58 + s.x + (s.w - 4) / 2}
@@ -333,17 +357,9 @@ export function ContextWindowAnim() {
           >
             {s.label}
           </text>
-        </motion.g>
+        </StepReveal>
       ))}
-      <motion.g
-        animate={{ opacity: [0, 0, 1] }}
-        transition={{
-          duration: 4,
-          times: [0, 0.65, 0.8],
-          repeat: Infinity,
-          repeatDelay: 1.5,
-        }}
-      >
+      <StepReveal index={5} dim={1}>
         <text
           x={320}
           y={120}
@@ -431,7 +447,7 @@ export function ContextWindowAnim() {
         >
           ← reclaimed budget
         </text>
-      </motion.g>
+      </StepReveal>
       <text
         x={320}
         y={205}
@@ -459,7 +475,6 @@ const TC_STEPS = [
   { from: "llm", text: '"It\'s 21°C and clear in Tokyo."', y: 186 },
 ];
 export function ToolCallingAnim() {
-  const CYCLE = TC_STEPS.length * 1.1 + 1.6;
   return (
     <Stage viewBox="0 0 640 230">
       <Node x={30} y={20} w={120} h={44} label="Your app" color="#38bdf8" />
@@ -483,21 +498,7 @@ export function ToolCallingAnim() {
       {TC_STEPS.map((s, i) => {
         const ltr = s.from === "app";
         return (
-          <motion.g
-            key={i}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 1, 0] }}
-            transition={{
-              duration: CYCLE,
-              times: [
-                (i * 1.1) / CYCLE,
-                (i * 1.1 + 0.35) / CYCLE,
-                (CYCLE - 0.6) / CYCLE,
-                1,
-              ],
-              repeat: Infinity,
-            }}
-          >
+          <StepReveal key={i} index={i}>
             <line
               x1={ltr ? 90 : 550}
               y1={s.y}
@@ -518,7 +519,7 @@ export function ToolCallingAnim() {
             >
               {s.text}
             </text>
-          </motion.g>
+          </StepReveal>
         );
       })}
       <defs>
@@ -566,25 +567,10 @@ const REACT_ROWS = [
   },
 ];
 export function ReactPatternAnim() {
-  const CYCLE = REACT_ROWS.length * 0.9 + 2;
   return (
     <Stage viewBox="0 0 640 240">
       {REACT_ROWS.map((r, i) => (
-        <motion.g
-          key={i}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: [0, 1, 1, 0], x: [-12, 0, 0, 0] }}
-          transition={{
-            duration: CYCLE,
-            times: [
-              (i * 0.9) / CYCLE,
-              (i * 0.9 + 0.4) / CYCLE,
-              (CYCLE - 0.7) / CYCLE,
-              1,
-            ],
-            repeat: Infinity,
-          }}
-        >
+        <StepReveal key={i} index={i}>
           <rect
             x={40}
             y={18 + i * 42}
@@ -614,7 +600,7 @@ export function ReactPatternAnim() {
           >
             {r.text}
           </text>
-        </motion.g>
+        </StepReveal>
       ))}
     </Stage>
   );
