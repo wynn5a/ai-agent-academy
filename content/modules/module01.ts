@@ -527,16 +527,46 @@ for item in resp.output:
               "Syntactically valid JSON — but **any** shape.",
             ],
             [
-              "Schema-enforced",
-              "OpenAI structured outputs (`json_schema`, `strict: true`); or a forced tool call whose `input_schema` is your output schema",
-              "Conforms to your schema via constrained decoding.",
+              "Native structured outputs",
+              'Anthropic: `output_config: {format: {type: "json_schema", schema}}` (or `client.messages.parse()`); OpenAI: structured outputs with `strict: true`',
+              "Conforms to your schema via constrained decoding. **The current default choice.**",
+            ],
+            [
+              "Forced tool call",
+              "A forced tool call whose `input_schema` is your output schema",
+              "Same guarantee — the portable fallback for any tool-calling model.",
             ],
           ],
         },
         {
           type: "code",
           language: "python",
-          title: "the tool-call trick for guaranteed structure (Anthropic)",
+          title: "native structured outputs (Anthropic) — the current default",
+          code: `TICKET_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {"type": "string",
+                     "enum": ["billing", "bug", "feature_request", "other"]},
+        "severity": {"type": "integer"},
+        "summary":  {"type": "string"},
+    },
+    "required": ["category", "severity", "summary"],
+    "additionalProperties": False,     # required for constrained decoding
+}
+
+resp = client.messages.create(
+    model="claude-sonnet-5", max_tokens=1024,
+    output_config={"format": {"type": "json_schema", "schema": TICKET_SCHEMA}},
+    messages=[{"role": "user", "content": f"Classify this ticket: {ticket_text}"}],
+)
+data = json.loads(resp.content[0].text)   # guaranteed to match the schema`,
+          explanation:
+            "The SDKs also ship a convenience wrapper (`client.messages.parse()` with a Pydantic/Zod model) that validates for you. One catch: constrained decoding supports enums, `required`, and types — but **not** numeric `minimum`/`maximum` or string-length limits. Keep those in your schema for documentation, but enforce them client-side (next section).",
+        },
+        {
+          type: "code",
+          language: "python",
+          title: "the tool-call trick — the portable fallback",
           code: `# Define your desired OUTPUT as a tool schema, then force the model to "call" it.
 resp = client.messages.create(
     model="claude-sonnet-5", max_tokens=1024,
@@ -560,7 +590,7 @@ resp = client.messages.create(
 data = next(b for b in resp.content if b.type == "tool_use").input
 # data is a dict matching the schema — no parsing prose`,
           explanation:
-            "`tool_choice` forces the call, so the 'tool' is really just an output mold. This is the standard Anthropic pattern for structured extraction. On OpenAI, prefer native structured outputs with `strict: true`, which constrains decoding to the schema.",
+            "`tool_choice` forces the call, so the 'tool' is really just an output mold. Before native structured outputs shipped, this *was* the standard Anthropic pattern — and it remains the portable one: it works on any tool-calling model, any provider, any API version. Conceptually it's also what structured outputs desugar to: constrained generation against a schema.",
         },
         {
           type: "heading",
@@ -598,9 +628,23 @@ def extract(text: str, max_retries: int = 2) -> Ticket:
           text: "Tool calling vs. structured output — when to use which? **Tool = the model needs information or effects mid-task** (search, DB query), possibly several times. **Structured output = you need the final answer in a shape** (classification, extraction). If there's no action to perform, don't dress extraction up as an agent loop — force one schema'd output and be done.",
         },
         {
+          type: "exercise",
+          kind: "concept",
+          prompt:
+            "You're building (a) a ticket classifier that outputs `{category, severity}`, and (b) an assistant that must look up order status in a database before answering. Which mechanism fits each — structured output or tool calling — and why?",
+          answer:
+            "(a) **Structured output**: there's no action to perform, you just need the answer in a shape — one schema-constrained call, no loop. (b) **Tool calling**: the model needs information mid-task that only your code can fetch; it requests `get_order_status`, you execute and return the result, and the model continues. The test is 'does the model need my code to *do* something mid-task?' — if no, don't dress extraction up as an agent.",
+        },
+        {
+          type: "callout",
+          kind: "insight",
+          title: "Interview angle",
+          text: "A favorite systems question: \"the model returns JSON that fails validation in production — walk me through your mitigation ladder.\" The ladder: (1) constrain harder (native structured outputs / strict mode, enums, required); (2) validate with Pydantic/Zod and retry **with the validation error fed back**; (3) fall back to a stronger model or deterministic parser; (4) never silently regex-fix. Bonus points for knowing constrained decoding can't enforce numeric ranges — that's the validator's job.",
+        },
+        {
           type: "keypoints",
           points: [
-            "JSON mode guarantees syntax; schema enforcement (strict structured outputs / forced tool call) guarantees shape.",
+            "Native structured outputs (constrained decoding) are the default; the forced tool call is the portable fallback; JSON mode only guarantees syntax.",
             "Constrain aggressively: enums, min/max, `required` — every constraint removes a failure mode.",
             "Validate with Pydantic/Zod even when 'guaranteed'; retry with the validation error fed back.",
             "Extraction ≠ agent. No action needed → one forced structured call.",
