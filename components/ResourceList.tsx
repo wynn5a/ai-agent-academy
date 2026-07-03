@@ -2,7 +2,13 @@ import type { Resource, ResourceKind } from "@/lib/types";
 
 const KIND_META: Record<
   ResourceKind,
-  { label: string; text: string; bg: string; ring: string; icon: React.ReactNode }
+  {
+    label: string;
+    text: string;
+    bg: string;
+    ring: string;
+    icon: React.ReactNode;
+  }
 > = {
   docs: {
     label: "Docs",
@@ -30,27 +36,21 @@ const KIND_META: Record<
     text: "text-violet-300",
     bg: "bg-violet-500/10",
     ring: "group-hover:ring-violet-500/40",
-    icon: (
-      <path d="M4 19.5 15 8l1-3 3-1-1 3-11 11-3 1Zm7-11L18 15" />
-    ),
+    icon: <path d="M4 19.5 15 8l1-3 3-1-1 3-11 11-3 1Zm7-11L18 15" />,
   },
   paper: {
     label: "Paper",
     text: "text-amber-300",
     bg: "bg-amber-500/10",
     ring: "group-hover:ring-amber-500/40",
-    icon: (
-      <path d="M9 3h6l-1 6h3l-8 12 1-8H7Z" />
-    ),
+    icon: <path d="M9 3h6l-1 6h3l-8 12 1-8H7Z" />,
   },
   repo: {
     label: "Repo",
     text: "text-emerald-300",
     bg: "bg-emerald-500/10",
     ring: "group-hover:ring-emerald-500/40",
-    icon: (
-      <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12" />
-    ),
+    icon: <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12" />,
   },
   book: {
     label: "Book",
@@ -75,9 +75,7 @@ const KIND_META: Record<
     text: "text-fuchsia-300",
     bg: "bg-fuchsia-500/10",
     ring: "group-hover:ring-fuchsia-500/40",
-    icon: (
-      <path d="m5 3 6 16 2-6.5L19 10 5 3Zm8 12 4 4" />
-    ),
+    icon: <path d="m5 3 6 16 2-6.5L19 10 5 3Zm8 12 4 4" />,
   },
   benchmark: {
     label: "Benchmark",
