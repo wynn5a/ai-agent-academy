@@ -51,7 +51,10 @@ memory-types, multi-agent, eval-loop.
 - State: `playing` (user intent), `step`, `runId` (remount key — replay
   increments it, resetting step to 0 and restarting all motion).
 - Auto-advance: when step-driven and effectively playing, advance `step` every
-  ~2s, wrapping to 0 after a slightly longer hold on the final step.
+  ~2s. **Play-once:** on reaching the final step the run ends and stays frozen
+  until the user presses play (which restarts from step 0) or replay. Loop
+  animations end after one full pass (`cycleMs` per registry entry) the same
+  way. The ended state survives scrolling away and back — no auto-restart.
 - ⏮/⏭ set `step` directly and pause auto-play (standard media UX).
 - IntersectionObserver on the `<figure>`: out of view ⇒ effective playing
   false. Uses same mechanism as pause; no separate code path in animations.

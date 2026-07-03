@@ -19,6 +19,8 @@ type Entry = {
   steps?: number;
   /** auto-advance interval override (ms) */
   stepMs?: number;
+  /** loop animations: duration of one full pass — playback stops after it */
+  cycleMs?: number;
 };
 
 /* Step counts must match the row counts inside each animation component. */
@@ -29,6 +31,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 300,
+    cycleMs: 3800,
   },
   "token-stream": {
     Component: dynamic(() =>
@@ -36,6 +39,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 200,
+    cycleMs: 5800,
   },
   temperature: {
     Component: dynamic(() =>
@@ -43,6 +47,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 260,
+    cycleMs: 4500,
   },
   "context-window": {
     Component: dynamic(() =>
@@ -74,6 +79,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 660,
     h: 300,
+    cycleMs: 3600,
   },
   "embedding-space": {
     Component: dynamic(() =>
@@ -81,6 +87,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 240,
+    cycleMs: 4200,
   },
   chunking: {
     Component: dynamic(() =>
@@ -97,6 +104,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 240,
+    cycleMs: 3200,
   },
   "multi-agent": {
     Component: dynamic(() =>
@@ -104,6 +112,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 260,
+    cycleMs: 6200,
   },
   "workflow-patterns": {
     Component: dynamic(() =>
@@ -127,6 +136,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 260,
+    cycleMs: 3400,
   },
   "injection-attack": {
     Component: dynamic(() =>
@@ -173,12 +183,15 @@ export default function ConceptAnimation({
   const [step, setStep] = useState(0);
   const [runId, setRunId] = useState(0);
   const [inView, setInView] = useState(false);
+  // the current pass finished — stay frozen until the user triggers play again
+  const [ended, setEnded] = useState(false);
   const figRef = useRef<HTMLElement>(null);
 
   const steps = entry?.steps;
   const stepMs = entry?.stepMs ?? 2200;
+  const cycleMs = entry?.cycleMs;
   const wantsPlay = userIntent ? userIntent === "play" : !reduced;
-  const playing = wantsPlay && inView;
+  const playing = wantsPlay && inView && !ended;
   // reduced-motion users see the completed diagram until they interact
   const shownStep = steps && reduced && userIntent === null ? steps - 1 : step;
 
@@ -193,25 +206,45 @@ export default function ConceptAnimation({
     return () => obs.disconnect();
   }, []);
 
+  // step animations: advance until the last step, then stop
   useEffect(() => {
     if (!steps || !playing) return;
-    const hold = step === steps - 1 ? stepMs * 1.8 : stepMs;
-    const id = setTimeout(() => setStep((s) => (s + 1) % steps), hold);
+    const id = setTimeout(
+      () =>
+        step >= steps - 1 ? setEnded(true) : setStep((s) => s + 1),
+      stepMs,
+    );
     return () => clearTimeout(id);
   }, [steps, playing, step, stepMs]);
+
+  // loop animations: stop after one full pass
+  useEffect(() => {
+    if (steps || !playing || !cycleMs) return;
+    const id = setTimeout(() => setEnded(true), cycleMs);
+    return () => clearTimeout(id);
+  }, [steps, playing, cycleMs]);
 
   if (!entry) return null;
   const { Component } = entry;
 
   const handleStep = (dir: 1 | -1) => {
     if (!steps) return;
+    setEnded(false);
     setUserIntent("pause");
     setStep((shownStep + dir + steps) % steps);
   };
   const handleReplay = () => {
+    setEnded(false);
     setStep(0);
     setUserIntent("play");
     setRunId((r) => r + 1);
+  };
+  const handleToggle = () => {
+    if (ended) {
+      handleReplay();
+      return;
+    }
+    setUserIntent(wantsPlay ? "pause" : "play");
   };
 
   return (
@@ -237,7 +270,7 @@ export default function ConceptAnimation({
           playing={playing}
           step={shownStep}
           stepCount={steps}
-          onToggle={() => setUserIntent(wantsPlay ? "pause" : "play")}
+          onToggle={handleToggle}
           onReplay={handleReplay}
           onStep={steps ? handleStep : undefined}
         />
