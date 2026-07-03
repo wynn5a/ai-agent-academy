@@ -1,10 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge } from "./primitives";
+import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
+import { useAnimPlayback } from "./controller";
 
 /* ---------- RAG pipeline: ingest + query paths ---------- */
 export function RagPipelineAnim() {
+  const { playing } = useAnimPlayback();
   return (
     <Stage viewBox="0 0 660 300">
       {/* ingest row */}
@@ -76,16 +78,26 @@ export function RagPipelineAnim() {
       <motion.circle
         r={5}
         fill="#fbbf24"
-        animate={{
-          cx: [70, 215, 370, 525, 445],
-          cy: [175, 175, 175, 175, 259],
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut",
-          repeatDelay: 0.5,
-        }}
+        initial={false}
+        animate={
+          playing
+            ? {
+                cx: [70, 215, 370, 525, 445],
+                cy: [175, 175, 175, 175, 259],
+                opacity: 1,
+              }
+            : { cx: 70, cy: 175, opacity: 0.6 }
+        }
+        transition={
+          playing
+            ? {
+                duration: 3,
+                repeat: Infinity,
+                ease: "easeInOut",
+                repeatDelay: 0.5,
+              }
+            : { duration: 0.3 }
+        }
       />
     </Stage>
   );
@@ -130,6 +142,7 @@ const CLUSTERS = [
   },
 ];
 export function EmbeddingSpaceAnim() {
+  const { playing } = useAnimPlayback();
   const q = { x: 168, y: 96 };
   return (
     <Stage viewBox="0 0 640 240">
@@ -154,12 +167,17 @@ export function EmbeddingSpaceAnim() {
             r={5}
             fill={c.color}
             fillOpacity={0.75}
-            animate={{ r: [5, 6, 5] }}
-            transition={{
-              duration: 2.4,
-              repeat: Infinity,
-              delay: (i * 5 + j) * 0.15,
-            }}
+            initial={false}
+            animate={playing ? { r: [5, 6, 5] } : { r: 5 }}
+            transition={
+              playing
+                ? {
+                    duration: 2.4,
+                    repeat: Infinity,
+                    delay: (i * 5 + j) * 0.15,
+                  }
+                : { duration: 0.3 }
+            }
           />
         )),
       )}
@@ -196,12 +214,13 @@ export function EmbeddingSpaceAnim() {
 
       {/* query star + kNN rays */}
       <motion.g
-        animate={{ opacity: [0, 1, 1, 0] }}
-        transition={{
-          duration: 4,
-          times: [0, 0.15, 0.85, 1],
-          repeat: Infinity,
-        }}
+        initial={false}
+        animate={playing ? { opacity: [0, 1, 1, 0] } : { opacity: 1 }}
+        transition={
+          playing
+            ? { duration: 4, times: [0, 0.15, 0.85, 1], repeat: Infinity }
+            : { duration: 0.3 }
+        }
       >
         <text
           x={q.x}
@@ -232,13 +251,17 @@ export function EmbeddingSpaceAnim() {
             stroke="#fbbf24"
             strokeOpacity={0.6}
             strokeDasharray="3 4"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: [0, 1, 1, 0] }}
-            transition={{
-              duration: 4,
-              times: [0.15, 0.35, 0.85, 1],
-              repeat: Infinity,
-            }}
+            initial={false}
+            animate={playing ? { pathLength: [0, 1, 1, 0] } : { pathLength: 1 }}
+            transition={
+              playing
+                ? {
+                    duration: 4,
+                    times: [0.15, 0.35, 0.85, 1],
+                    repeat: Infinity,
+                  }
+                : { duration: 0.3 }
+            }
           />
         ))}
       </motion.g>
@@ -248,6 +271,7 @@ export function EmbeddingSpaceAnim() {
 
 /* ---------- Chunking strategies ---------- */
 export function ChunkingAnim() {
+  const { step } = useAnimPlayback();
   const strategies = [
     {
       label: "fixed-size (naive)",
@@ -274,50 +298,51 @@ export function ChunkingAnim() {
         let acc = 0;
         return (
           <g key={i} transform={`translate(90, ${28 + i * 66})`}>
-            <text
-              x={-8}
-              y={18}
-              textAnchor="end"
-              fill="#94a3b8"
-              fontSize={10}
-              fontFamily="monospace"
-            >
-              {s.label}
-            </text>
-            {s.segs.map((w, j) => {
-              const x = acc;
-              acc += w + 6;
-              return (
-                <motion.rect
-                  key={j}
-                  x={x}
-                  y={0}
-                  height={28}
-                  rx={6}
-                  fill={s.color}
-                  fillOpacity={0.28}
-                  stroke={s.color}
-                  strokeOpacity={0.6}
-                  initial={{ width: 0 }}
-                  animate={{ width: w }}
-                  transition={{
-                    duration: 0.5,
-                    delay: i * 0.8 + j * 0.18,
-                    repeat: Infinity,
-                    repeatDelay: 6,
-                  }}
-                />
-              );
-            })}
-            <text
-              x={0}
-              y={46}
-              fill="#475569"
-              fontSize={9.5}
-              fontFamily="monospace"
-            >
-              {s.note}
-            </text>
+            <StepReveal index={i}>
+              <text
+                x={-8}
+                y={18}
+                textAnchor="end"
+                fill="#94a3b8"
+                fontSize={10}
+                fontFamily="monospace"
+              >
+                {s.label}
+              </text>
+              {s.segs.map((w, j) => {
+                const x = acc;
+                acc += w + 6;
+                return (
+                  <motion.rect
+                    key={j}
+                    x={x}
+                    y={0}
+                    height={28}
+                    rx={6}
+                    fill={s.color}
+                    fillOpacity={0.28}
+                    stroke={s.color}
+                    strokeOpacity={0.6}
+                    initial={false}
+                    animate={{ width: i <= step ? w : 0 }}
+                    transition={{
+                      duration: 0.5,
+                      ease: "easeOut",
+                      delay: i === step ? j * 0.15 : 0,
+                    }}
+                  />
+                );
+              })}
+              <text
+                x={0}
+                y={46}
+                fill="#475569"
+                fontSize={9.5}
+                fontFamily="monospace"
+              >
+                {s.note}
+              </text>
+            </StepReveal>
           </g>
         );
       })}
@@ -327,6 +352,7 @@ export function ChunkingAnim() {
 
 /* ---------- Memory types ---------- */
 export function MemoryTypesAnim() {
+  const { playing } = useAnimPlayback();
   const types = [
     {
       label: "Working",
@@ -420,8 +446,15 @@ export function MemoryTypesAnim() {
       <motion.circle
         r={4}
         fill="#fbbf24"
-        animate={{ cx: [320, 320], cy: [182, 148] }}
-        transition={{ duration: 1.4, repeat: Infinity, repeatType: "reverse" }}
+        initial={false}
+        animate={
+          playing ? { cx: 320, cy: [182, 148] } : { cx: 320, cy: 165 }
+        }
+        transition={
+          playing
+            ? { duration: 1.4, repeat: Infinity, repeatType: "reverse" }
+            : { duration: 0.3 }
+        }
       />
     </Stage>
   );
