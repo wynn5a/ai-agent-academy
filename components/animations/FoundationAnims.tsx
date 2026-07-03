@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
+import { Stage, Node, FlowEdge, StepReveal, loopMotion } from "./primitives";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- 1. The agent loop: LLM → tool call → result → LLM ---------- */
@@ -45,25 +45,22 @@ export function AgentLoopAnim() {
         color="#38bdf8"
       />
 
-      {/* pulse riding the loop */}
+      {/* pulse riding the loop — one lap per pass, ends back at the LLM */}
       <motion.circle
         r={6}
         fill="#a78bfa"
-        initial={false}
-        animate={
-          playing
-            ? {
-                cx: [190, 320, 450, 450, 320, 190],
-                cy: [130, 88, 130, 170, 212, 170],
-                opacity: 1,
-              }
-            : { cx: 190, cy: 130, opacity: 0.6 }
-        }
-        transition={
-          playing
-            ? { duration: 3.6, repeat: Infinity, ease: "easeInOut" }
-            : { duration: 0.3 }
-        }
+        {...loopMotion(
+          playing,
+          {
+            animate: {
+              cx: [190, 320, 450, 450, 320, 190],
+              cy: [130, 88, 130, 170, 212, 170],
+              opacity: 1,
+            },
+            transition: { duration: 3.6, ease: "easeInOut" },
+          },
+          { cx: 190, cy: 130, opacity: 0.6 },
+        )}
       />
       <motion.text
         x={320}
@@ -72,11 +69,14 @@ export function AgentLoopAnim() {
         fill="#64748b"
         fontSize={11}
         fontFamily="ui-monospace, Menlo, monospace"
-        initial={false}
-        animate={playing ? { opacity: [0.4, 1, 0.4] } : { opacity: 0.7 }}
-        transition={
-          playing ? { duration: 3.6, repeat: Infinity } : { duration: 0.3 }
-        }
+        {...loopMotion(
+          playing,
+          {
+            animate: { opacity: [0.4, 1, 0.4] },
+            transition: { duration: 3.6 },
+          },
+          { opacity: 0.7 },
+        )}
       >
         loop until done ↺
       </motion.text>
@@ -142,22 +142,19 @@ export function TokenStreamAnim() {
       {TOKENS.map((t, i) => (
         <motion.g
           key={i}
-          initial={false}
-          animate={
-            playing ? { opacity: [0, 1, 1, 0], x: [0, 290] } : { opacity: 0 }
-          }
-          transition={
-            playing
-              ? {
-                  duration: 2.8,
-                  times: [0, 0.1, 0.9, 1],
-                  repeat: Infinity,
-                  delay: i * 0.35,
-                  repeatDelay: TOKENS.length * 0.35 - 2.8 + 1.2,
-                  ease: "linear",
-                }
-              : { duration: 0.2 }
-          }
+          {...loopMotion(
+            playing,
+            {
+              animate: { opacity: [0, 1, 1, 0], x: [0, 290] },
+              transition: {
+                duration: 2.8,
+                times: [0, 0.1, 0.9, 1],
+                delay: i * 0.35,
+                ease: "linear",
+              },
+            },
+            { opacity: 0 },
+          )}
         >
           <rect
             x={165}
@@ -259,20 +256,14 @@ export function TemperatureAnim() {
                   rx={4}
                   fill={mode ? "#fbbf24" : "#38bdf8"}
                   fillOpacity={0.7}
-                  initial={false}
-                  animate={{
-                    width: playing ? [0, 160 * p, 160 * p, 0] : 160 * p,
-                  }}
-                  transition={
-                    playing
-                      ? {
-                          duration: 4,
-                          times: [0, 0.25, 0.85, 1],
-                          repeat: Infinity,
-                          delay: i * 0.12,
-                        }
-                      : { duration: 0.3 }
-                  }
+                  {...loopMotion(
+                    playing,
+                    {
+                      animate: { width: [0, 160 * p] },
+                      transition: { duration: 1, delay: i * 0.12 },
+                    },
+                    { width: 160 * p },
+                  )}
                 />
                 <text
                   x={232}

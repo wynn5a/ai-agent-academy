@@ -2,6 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import type { TargetAndTransition, Transition } from "framer-motion";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- shared SVG primitives for concept animations ---------- */
@@ -100,6 +101,41 @@ export function FlowEdge({
       className="animate-flow-dash"
       style={{ animationPlayState: playing ? "running" : "paused" }}
     />
+  );
+}
+
+/**
+ * Spreadable props for a loop animation element: runs `active` keyframes while
+ * playing, settles into the `rest` pose when paused/ended.
+ */
+export function loopMotion(
+  playing: boolean,
+  active: { animate: TargetAndTransition; transition: Transition },
+  rest: TargetAndTransition,
+) {
+  return {
+    initial: false as const,
+    animate: playing ? active.animate : rest,
+    transition: playing ? active.transition : { duration: 0.3 },
+  };
+}
+
+/** Step-driven opacity fade with the shared reveal timing. */
+export function StepFade({
+  opacity,
+  children,
+}: {
+  opacity: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.g
+      initial={false}
+      animate={{ opacity }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+    >
+      {children}
+    </motion.g>
   );
 }
 

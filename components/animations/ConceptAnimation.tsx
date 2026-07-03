@@ -2,6 +2,7 @@
 
 import React, {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -23,7 +24,11 @@ type Entry = {
   cycleMs?: number;
 };
 
-/* Step counts must match the row counts inside each animation component. */
+/*
+ * Step counts must match the row counts inside each animation component.
+ * cycleMs must be ≥ the animation's one-pass duration (its internal
+ * duration + stagger delays) — playback freezes into the rest pose after it.
+ */
 const REGISTRY: Record<AnimationName, Entry> = {
   "agent-loop": {
     Component: dynamic(() =>
@@ -31,7 +36,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 300,
-    cycleMs: 3800,
+    cycleMs: 3800, // one 3.6s lap
   },
   "token-stream": {
     Component: dynamic(() =>
@@ -39,7 +44,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 200,
-    cycleMs: 5800,
+    cycleMs: 5800, // last token: 8 × 0.35s stagger + 2.8s flight
   },
   temperature: {
     Component: dynamic(() =>
@@ -47,7 +52,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 260,
-    cycleMs: 4500,
+    cycleMs: 1800, // bars grow in 1s + 0.36s stagger
   },
   "context-window": {
     Component: dynamic(() =>
@@ -79,7 +84,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 660,
     h: 300,
-    cycleMs: 3600,
+    cycleMs: 3600, // 3s pulse travel + hold at the answer
   },
   "embedding-space": {
     Component: dynamic(() =>
@@ -87,7 +92,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 240,
-    cycleMs: 4200,
+    cycleMs: 3000, // query fades in 0.8s, rays draw by 1.6s, dots settle
   },
   chunking: {
     Component: dynamic(() =>
@@ -104,7 +109,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 240,
-    cycleMs: 3200,
+    cycleMs: 3200, // ~2 shuttle bounces (1.4s each way)
   },
   "multi-agent": {
     Component: dynamic(() =>
@@ -112,7 +117,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     ),
     w: 640,
     h: 260,
-    cycleMs: 6200,
+    cycleMs: 6200, // last worker: 2.4s stagger + 3.6s round trip
   },
   "workflow-patterns": {
     Component: dynamic(() =>
@@ -131,12 +136,10 @@ const REGISTRY: Record<AnimationName, Entry> = {
     steps: 6,
   },
   "eval-loop": {
-    Component: dynamic(() =>
-      import("./ProdAnims").then((m) => m.EvalLoopAnim),
-    ),
+    Component: dynamic(() => import("./ProdAnims").then((m) => m.EvalLoopAnim)),
     w: 640,
     h: 260,
-    cycleMs: 3400,
+    cycleMs: 3400, // last dot: 7 × 0.35s stagger + 0.3s pop
   },
   "injection-attack": {
     Component: dynamic(() =>
@@ -198,20 +201,28 @@ export default function ConceptAnimation({
   useEffect(() => {
     const el = figRef.current;
     if (!el) return;
-    const obs = new IntersectionObserver(
-      ([e]) => setInView(e.isIntersecting),
-      { threshold: 0.2 },
-    );
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), {
+      threshold: 0.2,
+    });
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
+
+  const Component = entry?.Component;
+  const playback = useMemo(
+    () => ({ playing, step: shownStep }),
+    [playing, shownStep],
+  );
+  const anim = useMemo(
+    () => (Component ? <Component key={runId} /> : null),
+    [Component, runId],
+  );
 
   // step animations: advance until the last step, then stop
   useEffect(() => {
     if (!steps || !playing) return;
     const id = setTimeout(
-      () =>
-        step >= steps - 1 ? setEnded(true) : setStep((s) => s + 1),
+      () => (step >= steps - 1 ? setEnded(true) : setStep((s) => s + 1)),
       stepMs,
     );
     return () => clearTimeout(id);
@@ -225,7 +236,6 @@ export default function ConceptAnimation({
   }, [steps, playing, cycleMs]);
 
   if (!entry) return null;
-  const { Component } = entry;
 
   const handleStep = (dir: 1 | -1) => {
     if (!steps) return;
@@ -257,9 +267,7 @@ export default function ConceptAnimation({
           className="mx-auto w-full max-w-2xl"
           style={{ aspectRatio: `${entry.w} / ${entry.h}` }}
         >
-          <AnimPlaybackProvider value={{ playing, step: shownStep }}>
-            <Component key={runId} />
-          </AnimPlaybackProvider>
+          <AnimPlaybackProvider value={playback}>{anim}</AnimPlaybackProvider>
         </div>
       </div>
       <figcaption className="border-border/60 flex items-center gap-3 border-t px-4 py-1.5">

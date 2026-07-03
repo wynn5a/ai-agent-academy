@@ -22,10 +22,12 @@
 ### Task 1: Playback context + control bar (`controller.tsx`) and primitives update
 
 **Files:**
+
 - Create: `components/animations/controller.tsx`
 - Modify: `components/animations/primitives.tsx`
 
 **Interfaces:**
+
 - Produces: `useAnimPlayback(): { playing: boolean; step: number }`, `AnimPlaybackProvider`, `ControlBar` (props below), `StepReveal` (props: `index: number; dim?: number; children`), `FlowEdge` (unchanged props, now pause-aware).
 
 - [ ] **Step 1: Write `components/animations/controller.tsx`**
@@ -118,7 +120,7 @@ export function ControlBar({
           <CtrlButton label="Replay" onClick={onReplay}>
             ↺
           </CtrlButton>
-          <span className="ml-1 font-mono text-[10px] tabular-nums text-slate-500">
+          <span className="ml-1 font-mono text-[10px] text-slate-500 tabular-nums">
             {step + 1}/{stepCount}
           </span>
         </>
@@ -147,7 +149,13 @@ import { motion } from "framer-motion";
 import { useAnimPlayback } from "./controller";
 
 // FlowEdge body becomes:
-export function FlowEdge({ d, color = "#38bdf8" }: { d: string; color?: string }) {
+export function FlowEdge({
+  d,
+  color = "#38bdf8",
+}: {
+  d: string;
+  color?: string;
+}) {
   const { playing } = useAnimPlayback();
   return (
     <path
@@ -197,13 +205,15 @@ export function StepReveal({
 ### Task 2: Rewrite `ConceptAnimation.tsx` shell
 
 **Files:**
+
 - Modify: `components/animations/ConceptAnimation.tsx` (full rewrite)
 
 **Interfaces:**
+
 - Consumes: `AnimPlaybackProvider`, `ControlBar` from Task 1.
 - Produces: same default export `ConceptAnimation({ name, caption })`.
 
-- [ ] **Step 1: Rewrite the shell.** Registry maps each name to `{ Component: dynamic(...), w, h, steps?, stepMs? }`. State: `userIntent` (`"play" | "pause" | null`), `step`, `runId`. Effective `playing = wantsPlay && inView`. Reduced motion via `useSyncExternalStore` on `matchMedia("(prefers-reduced-motion: reduce)")`; before any user interaction, `wantsPlay = !reduced` and step anims *display* their final step (derived `shownStep`, no state write). Auto-advance via `setTimeout` chain (~2.2s/step, 1.8× hold on the last step, wraps to 0). Prev/next pause auto-play and wrap. Replay bumps `runId` (remount key), resets step to 0, sets intent to play. IntersectionObserver (threshold 0.2) drives `inView`. Figure wraps the animation in an `aspect-ratio` box sized from the viewBox so lazy loading causes no layout shift. Footer row always renders: caption (left, flex-1) + `ControlBar` (right).
+- [ ] **Step 1: Rewrite the shell.** Registry maps each name to `{ Component: dynamic(...), w, h, steps?, stepMs? }`. State: `userIntent` (`"play" | "pause" | null`), `step`, `runId`. Effective `playing = wantsPlay && inView`. Reduced motion via `useSyncExternalStore` on `matchMedia("(prefers-reduced-motion: reduce)")`; before any user interaction, `wantsPlay = !reduced` and step anims _display_ their final step (derived `shownStep`, no state write). Auto-advance via `setTimeout` chain (~2.2s/step, 1.8× hold on the last step, wraps to 0). Prev/next pause auto-play and wrap. Replay bumps `runId` (remount key), resets step to 0, sets intent to play. IntersectionObserver (threshold 0.2) drives `inView`. Figure wraps the animation in an `aspect-ratio` box sized from the viewBox so lazy loading causes no layout shift. Footer row always renders: caption (left, flex-1) + `ControlBar` (right).
 
 ```tsx
 "use client";
@@ -231,23 +241,122 @@ const REGISTRY: Record<AnimationName, Entry> = {
     Component: dynamic(() =>
       import("./FoundationAnims").then((m) => m.AgentLoopAnim),
     ),
-    w: 640, h: 300,
+    w: 640,
+    h: 300,
   },
-  "token-stream": { Component: dynamic(() => import("./FoundationAnims").then((m) => m.TokenStreamAnim)), w: 640, h: 200 },
-  temperature: { Component: dynamic(() => import("./FoundationAnims").then((m) => m.TemperatureAnim)), w: 640, h: 260 },
-  "context-window": { Component: dynamic(() => import("./FoundationAnims").then((m) => m.ContextWindowAnim)), w: 640, h: 220, steps: 6 },
-  "tool-calling": { Component: dynamic(() => import("./FoundationAnims").then((m) => m.ToolCallingAnim)), w: 640, h: 230, steps: 4 },
-  "react-pattern": { Component: dynamic(() => import("./FoundationAnims").then((m) => m.ReactPatternAnim)), w: 640, h: 240, steps: 5 },
-  "rag-pipeline": { Component: dynamic(() => import("./KnowledgeAnims").then((m) => m.RagPipelineAnim)), w: 660, h: 300 },
-  "embedding-space": { Component: dynamic(() => import("./KnowledgeAnims").then((m) => m.EmbeddingSpaceAnim)), w: 640, h: 240 },
-  chunking: { Component: dynamic(() => import("./KnowledgeAnims").then((m) => m.ChunkingAnim)), w: 640, h: 230, steps: 3, stepMs: 2600 },
-  "memory-types": { Component: dynamic(() => import("./KnowledgeAnims").then((m) => m.MemoryTypesAnim)), w: 640, h: 240 },
-  "multi-agent": { Component: dynamic(() => import("./ScaleAnims").then((m) => m.MultiAgentAnim)), w: 640, h: 260 },
-  "workflow-patterns": { Component: dynamic(() => import("./ScaleAnims").then((m) => m.WorkflowPatternsAnim)), w: 640, h: 200 },
-  "mcp-handshake": { Component: dynamic(() => import("./ScaleAnims").then((m) => m.McpHandshakeAnim)), w: 640, h: 300, steps: 6 },
-  "eval-loop": { Component: dynamic(() => import("./ProdAnims").then((m) => m.EvalLoopAnim)), w: 640, h: 260 },
-  "injection-attack": { Component: dynamic(() => import("./ProdAnims").then((m) => m.InjectionAttackAnim)), w: 640, h: 270, steps: 3, stepMs: 2800 },
-  "capstone-pipeline": { Component: dynamic(() => import("./ProdAnims").then((m) => m.CapstonePipelineAnim)), w: 660, h: 190, steps: 7, stepMs: 1600 },
+  "token-stream": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.TokenStreamAnim),
+    ),
+    w: 640,
+    h: 200,
+  },
+  temperature: {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.TemperatureAnim),
+    ),
+    w: 640,
+    h: 260,
+  },
+  "context-window": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.ContextWindowAnim),
+    ),
+    w: 640,
+    h: 220,
+    steps: 6,
+  },
+  "tool-calling": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.ToolCallingAnim),
+    ),
+    w: 640,
+    h: 230,
+    steps: 4,
+  },
+  "react-pattern": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.ReactPatternAnim),
+    ),
+    w: 640,
+    h: 240,
+    steps: 5,
+  },
+  "rag-pipeline": {
+    Component: dynamic(() =>
+      import("./KnowledgeAnims").then((m) => m.RagPipelineAnim),
+    ),
+    w: 660,
+    h: 300,
+  },
+  "embedding-space": {
+    Component: dynamic(() =>
+      import("./KnowledgeAnims").then((m) => m.EmbeddingSpaceAnim),
+    ),
+    w: 640,
+    h: 240,
+  },
+  chunking: {
+    Component: dynamic(() =>
+      import("./KnowledgeAnims").then((m) => m.ChunkingAnim),
+    ),
+    w: 640,
+    h: 230,
+    steps: 3,
+    stepMs: 2600,
+  },
+  "memory-types": {
+    Component: dynamic(() =>
+      import("./KnowledgeAnims").then((m) => m.MemoryTypesAnim),
+    ),
+    w: 640,
+    h: 240,
+  },
+  "multi-agent": {
+    Component: dynamic(() =>
+      import("./ScaleAnims").then((m) => m.MultiAgentAnim),
+    ),
+    w: 640,
+    h: 260,
+  },
+  "workflow-patterns": {
+    Component: dynamic(() =>
+      import("./ScaleAnims").then((m) => m.WorkflowPatternsAnim),
+    ),
+    w: 640,
+    h: 200,
+  },
+  "mcp-handshake": {
+    Component: dynamic(() =>
+      import("./ScaleAnims").then((m) => m.McpHandshakeAnim),
+    ),
+    w: 640,
+    h: 300,
+    steps: 6,
+  },
+  "eval-loop": {
+    Component: dynamic(() => import("./ProdAnims").then((m) => m.EvalLoopAnim)),
+    w: 640,
+    h: 260,
+  },
+  "injection-attack": {
+    Component: dynamic(() =>
+      import("./ProdAnims").then((m) => m.InjectionAttackAnim),
+    ),
+    w: 640,
+    h: 270,
+    steps: 3,
+    stepMs: 2800,
+  },
+  "capstone-pipeline": {
+    Component: dynamic(() =>
+      import("./ProdAnims").then((m) => m.CapstonePipelineAnim),
+    ),
+    w: 660,
+    h: 190,
+    steps: 7,
+    stepMs: 1600,
+  },
 };
 
 function useReducedMotionPref() {
@@ -281,16 +390,14 @@ export default function ConceptAnimation({
   const wantsPlay = userIntent ? userIntent === "play" : !reduced;
   const playing = wantsPlay && inView;
   // reduced-motion users see the completed diagram until they interact
-  const shownStep =
-    steps && reduced && userIntent === null ? steps - 1 : step;
+  const shownStep = steps && reduced && userIntent === null ? steps - 1 : step;
 
   useEffect(() => {
     const el = figRef.current;
     if (!el) return;
-    const obs = new IntersectionObserver(
-      ([e]) => setInView(e.isIntersecting),
-      { threshold: 0.2 },
-    );
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), {
+      threshold: 0.2,
+    });
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
@@ -361,9 +468,11 @@ Note: the early `if (!entry) return null` must come AFTER all hooks (hooks rules
 ### Task 3: Convert `FoundationAnims.tsx`
 
 **Files:**
+
 - Modify: `components/animations/FoundationAnims.tsx`
 
 **Interfaces:**
+
 - Consumes: `useAnimPlayback` from controller, `StepReveal` from primitives.
 
 Conversions (registry steps: tool-calling 4, react-pattern 5, context-window 6):
@@ -371,20 +480,35 @@ Conversions (registry steps: tool-calling 4, react-pattern 5, context-window 6):
 - [ ] **Step 1: `ToolCallingAnim` (step, 4)** — delete the per-message infinite opacity keyframes; wrap each message `<g>` (line + text) in `<StepReveal index={i}>`. Pattern (identical for McpHandshakeAnim in Task 5):
 
 ```tsx
-{TC_STEPS.map((s, i) => {
-  const ltr = s.from === "app";
-  return (
-    <StepReveal key={i} index={i}>
-      <line x1={ltr ? 90 : 550} y1={s.y} x2={ltr ? 550 : 90} y2={s.y}
-        stroke={ltr ? "#38bdf8" : "#a78bfa"} strokeOpacity={0.55}
-        strokeWidth={1.2} markerEnd="url(#arr)" />
-      <text x={320} y={s.y - 7} textAnchor="middle"
-        fill={ltr ? "#7dd3fc" : "#c4b5fd"} fontSize={10} fontFamily="monospace">
-        {s.text}
-      </text>
-    </StepReveal>
-  );
-})}
+{
+  TC_STEPS.map((s, i) => {
+    const ltr = s.from === "app";
+    return (
+      <StepReveal key={i} index={i}>
+        <line
+          x1={ltr ? 90 : 550}
+          y1={s.y}
+          x2={ltr ? 550 : 90}
+          y2={s.y}
+          stroke={ltr ? "#38bdf8" : "#a78bfa"}
+          strokeOpacity={0.55}
+          strokeWidth={1.2}
+          markerEnd="url(#arr)"
+        />
+        <text
+          x={320}
+          y={s.y - 7}
+          textAnchor="middle"
+          fill={ltr ? "#7dd3fc" : "#c4b5fd"}
+          fontSize={10}
+          fontFamily="monospace"
+        >
+          {s.text}
+        </text>
+      </StepReveal>
+    );
+  });
+}
 ```
 
 - [ ] **Step 2: `ReactPatternAnim` (step, 5)** — same treatment: each trace row wrapped in `<StepReveal index={i}>`; remove `CYCLE` math and infinite keyframes.
@@ -396,13 +520,25 @@ Conversions (registry steps: tool-calling 4, react-pattern 5, context-window 6):
 ```tsx
 const { playing } = useAnimPlayback();
 // pulse:
-<motion.circle r={6} fill="#a78bfa" initial={false}
-  animate={playing
-    ? { cx: [190, 320, 450, 450, 320, 190], cy: [130, 88, 130, 170, 212, 170], opacity: 1 }
-    : { cx: 190, cy: 130, opacity: 0.6 }}
-  transition={playing
-    ? { duration: 3.6, repeat: Infinity, ease: "easeInOut" }
-    : { duration: 0.3 }} />
+<motion.circle
+  r={6}
+  fill="#a78bfa"
+  initial={false}
+  animate={
+    playing
+      ? {
+          cx: [190, 320, 450, 450, 320, 190],
+          cy: [130, 88, 130, 170, 212, 170],
+          opacity: 1,
+        }
+      : { cx: 190, cy: 130, opacity: 0.6 }
+  }
+  transition={
+    playing
+      ? { duration: 3.6, repeat: Infinity, ease: "easeInOut" }
+      : { duration: 0.3 }
+  }
+/>;
 // text: animate={playing ? { opacity: [0.4, 1, 0.4] } : { opacity: 0.7 }}
 //       transition={playing ? { duration: 3.6, repeat: Infinity } : { duration: 0.3 }}
 ```
@@ -420,6 +556,7 @@ const { playing } = useAnimPlayback();
 ### Task 4: Convert `KnowledgeAnims.tsx`
 
 **Files:**
+
 - Modify: `components/animations/KnowledgeAnims.tsx`
 
 - [ ] **Step 1: `ChunkingAnim` (step, 3)** — component reads `const { step } = useAnimPlayback()`. Each strategy row: wrap in `<StepReveal index={i}>`; inner bars grow when their row is reached: `initial={false} animate={{ width: i <= step ? w : 0 }} transition={{ duration: 0.5, delay: i === step ? j * 0.15 : 0 }}` (remove `repeat`/`repeatDelay`).
@@ -437,6 +574,7 @@ const { playing } = useAnimPlayback();
 ### Task 5: Convert `ScaleAnims.tsx`
 
 **Files:**
+
 - Modify: `components/animations/ScaleAnims.tsx`
 
 - [ ] **Step 1: `McpHandshakeAnim` (step, 6)** — identical pattern to `ToolCallingAnim` Step 1 of Task 3: each message wrapped in `<StepReveal index={i}>`, delete `CYCLE` timing.
@@ -452,6 +590,7 @@ const { playing } = useAnimPlayback();
 ### Task 6: Convert `ProdAnims.tsx`
 
 **Files:**
+
 - Modify: `components/animations/ProdAnims.tsx`
 
 - [ ] **Step 1: `InjectionAttackAnim` (step, 3)** — step 0: top row (user request node, fetched-webpage group, agent-context node, their two FlowEdges) in `<StepReveal index={0} dim={1}>`; the flashing red injected text keeps its pulse only while playing (`animate={playing ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}`). Step 1: defense-layer group + its incoming edge in `<StepReveal index={1} dim={1}>` (drop the one-shot delay fade). Step 2: outcomes row (both result boxes + their edges) in `<StepReveal index={2} dim={1}>` (drop the infinite opacity cycle).

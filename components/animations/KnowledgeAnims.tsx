@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
+import { Stage, Node, FlowEdge, StepReveal, loopMotion } from "./primitives";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- RAG pipeline: ingest + query paths ---------- */
@@ -78,26 +78,18 @@ export function RagPipelineAnim() {
       <motion.circle
         r={5}
         fill="#fbbf24"
-        initial={false}
-        animate={
-          playing
-            ? {
-                cx: [70, 215, 370, 525, 445],
-                cy: [175, 175, 175, 175, 259],
-                opacity: 1,
-              }
-            : { cx: 70, cy: 175, opacity: 0.6 }
-        }
-        transition={
-          playing
-            ? {
-                duration: 3,
-                repeat: Infinity,
-                ease: "easeInOut",
-                repeatDelay: 0.5,
-              }
-            : { duration: 0.3 }
-        }
+        {...loopMotion(
+          playing,
+          {
+            animate: {
+              cx: [70, 215, 370, 525, 445],
+              cy: [175, 175, 175, 175, 259],
+              opacity: 1,
+            },
+            transition: { duration: 3, ease: "easeInOut" },
+          },
+          { cx: 445, cy: 259, opacity: 0.6 },
+        )}
       />
     </Stage>
   );
@@ -167,17 +159,18 @@ export function EmbeddingSpaceAnim() {
             r={5}
             fill={c.color}
             fillOpacity={0.75}
-            initial={false}
-            animate={playing ? { r: [5, 6, 5] } : { r: 5 }}
-            transition={
-              playing
-                ? {
-                    duration: 2.4,
-                    repeat: Infinity,
-                    delay: (i * 5 + j) * 0.15,
-                  }
-                : { duration: 0.3 }
-            }
+            {...loopMotion(
+              playing,
+              {
+                animate: { r: [5, 6, 5] },
+                transition: {
+                  duration: 2.4,
+                  repeat: Infinity,
+                  delay: (i * 5 + j) * 0.15,
+                },
+              },
+              { r: 5 },
+            )}
           />
         )),
       )}
@@ -212,15 +205,13 @@ export function EmbeddingSpaceAnim() {
         onboarding guides
       </text>
 
-      {/* query star + kNN rays */}
+      {/* query star + kNN rays — fade in once, then hold */}
       <motion.g
-        initial={false}
-        animate={playing ? { opacity: [0, 1, 1, 0] } : { opacity: 1 }}
-        transition={
-          playing
-            ? { duration: 4, times: [0, 0.15, 0.85, 1], repeat: Infinity }
-            : { duration: 0.3 }
-        }
+        {...loopMotion(
+          playing,
+          { animate: { opacity: [0, 1] }, transition: { duration: 0.8 } },
+          { opacity: 1 },
+        )}
       >
         <text
           x={q.x}
@@ -251,17 +242,14 @@ export function EmbeddingSpaceAnim() {
             stroke="#fbbf24"
             strokeOpacity={0.6}
             strokeDasharray="3 4"
-            initial={false}
-            animate={playing ? { pathLength: [0, 1, 1, 0] } : { pathLength: 1 }}
-            transition={
-              playing
-                ? {
-                    duration: 4,
-                    times: [0.15, 0.35, 0.85, 1],
-                    repeat: Infinity,
-                  }
-                : { duration: 0.3 }
-            }
+            {...loopMotion(
+              playing,
+              {
+                animate: { pathLength: [0, 1] },
+                transition: { duration: 0.8, delay: 0.8 },
+              },
+              { pathLength: 1 },
+            )}
           />
         ))}
       </motion.g>
@@ -446,15 +434,18 @@ export function MemoryTypesAnim() {
       <motion.circle
         r={4}
         fill="#fbbf24"
-        initial={false}
-        animate={
-          playing ? { cx: 320, cy: [182, 148] } : { cx: 320, cy: 165 }
-        }
-        transition={
-          playing
-            ? { duration: 1.4, repeat: Infinity, repeatType: "reverse" }
-            : { duration: 0.3 }
-        }
+        {...loopMotion(
+          playing,
+          {
+            animate: { cx: 320, cy: [182, 148] },
+            transition: {
+              duration: 1.4,
+              repeat: Infinity,
+              repeatType: "reverse",
+            },
+          },
+          { cx: 320, cy: 165 },
+        )}
       />
     </Stage>
   );

@@ -32,11 +32,13 @@
 ### Task 1: `exercise` Section type + Exercise component
 
 **Files:**
+
 - Modify: `lib/types.ts:5-19` (the `Section` union)
 - Create: `components/Exercise.tsx`
 - Modify: `components/SectionRenderer.tsx` (imports + one new `case`)
 
 **Interfaces:**
+
 - Produces: `Section` union member `{ type: "exercise"; kind: "predict" | "spot-the-bug" | "concept"; prompt: string; code?: string; language?: string; answer: string }` — Tasks 2–7 author content against this exact shape.
 - Consumes: existing `CodeBlock` (`components/CodeBlock.tsx`) and `renderInline` (`lib/markdown.tsx`).
 
@@ -111,9 +113,7 @@ export default function Exercise({
       <div className="leading-relaxed text-slate-300">
         {renderInline(prompt)}
       </div>
-      {code && (
-        <CodeBlock language={language ?? "python"} code={code} />
-      )}
+      {code && <CodeBlock language={language ?? "python"} code={code} />}
       <button
         onClick={() => setRevealed((r) => !r)}
         className="border-border mt-4 rounded-lg border px-3 py-1.5 text-sm text-slate-300 hover:bg-white/5"
@@ -183,9 +183,11 @@ git commit -m "feat: add reveal-answer exercise section type and component"
 ### Task 2: Lesson 1 refresh — model IDs, raw HTTP, exercises
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (lesson `messages-are-the-only-state`, plus a global model-ID sweep)
 
 **Interfaces:**
+
 - Consumes: `exercise` Section variant from Task 1.
 
 - [ ] **Step 1: Global model-ID sweep across the whole file**
@@ -289,6 +291,7 @@ git commit -m "content: refresh lesson 1 — current model IDs, raw HTTP section
 ### Task 3: Lesson 2 rewrite — sampling, thinking & effort, streaming
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (lesson `sampling-and-streaming`)
 
 - [ ] **Step 1: Retitle the lesson**
@@ -439,6 +442,7 @@ git commit -m "content: rewrite lesson 2 — sampling theory + adaptive thinking
 ### Task 4: Lesson 3 — thinking in tool loops, strict mode, parallel calls, Responses API
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (lesson `tool-calling`)
 
 - [ ] **Step 1: Extend the "two invariants" explanation on the Anthropic tool-loop code block**
@@ -565,6 +569,7 @@ git commit -m "content: lesson 3 — thinking in tool loops, strict mode, parall
 ### Task 5: Lesson 4 — native structured outputs become primary
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (lesson `structured-outputs`)
 
 - [ ] **Step 1: Update the rigor table**
@@ -661,6 +666,7 @@ git commit -m "content: lesson 4 — native structured outputs as primary patter
 ### Task 6: Lesson 5 — new stop reasons, model selection & pricing
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (lesson `errors-and-resilience`)
 
 - [ ] **Step 1: Fix the typo**
@@ -784,6 +790,7 @@ git commit -m "content: lesson 5 — refusal/context-window stop reasons, model 
 ### Task 7: New Lesson 6 — "Beyond Text: Images, PDFs & Files"
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (append a sixth lesson object to `lessons`)
 
 - [ ] **Step 1: Append this complete lesson after lesson 5 (`errors-and-resilience`)**
@@ -935,6 +942,7 @@ git commit -m "content: add lesson 6 — multimodal inputs (images, PDFs, Files 
 ### Task 8: Quiz audit + additions, lab stretch goal, resources, module metadata
 
 **Files:**
+
 - Modify: `content/modules/module01.ts` (`quiz`, `lab`, `resources`, `description`, `outcomes`)
 
 - [ ] **Step 1: Rewrite the sampling quiz question**

@@ -64,12 +64,12 @@ Additions (existing content stays):
 
 ## B. New topics
 
-| # | Topic | Placement | Content |
-|---|---|---|---|
-| B1 | Raw HTTP | New section near the top of **Lesson 1** | One `curl` POST to `/v1/messages` mirroring the first Python example; the point: the SDK is a thin convenience over JSON-over-HTTP — headers (`x-api-key`, `anthropic-version`), body, response shape. |
-| B2 | Extended thinking / effort | **Lesson 2** (part of the rewrite, see A) | Adaptive thinking, effort tiers, thinking-block handling, streaming interaction. |
-| B3 | Model selection & pricing | New section in **Lesson 5** | Tier table (Haiku 4.5 / Sonnet 5 / Opus 4.8 with indicative $/MTok and context sizes, explicitly flagged as "check the pricing page — these change"), routing heuristics (cheap model for classification/routing, strong model for planning), and cascade/fallback as a cost pattern. |
-| B4 | Multimodal input | **New Lesson 6**: "Beyond Text: Images, PDFs & Files" (~15 min) | Image content blocks (base64 + URL), PDF `document` blocks, when to use the Files API (reuse across requests), token cost of images, one worked extraction example ("pull the table out of this invoice PDF"). Ends with keypoints. No new animation (reuse none; text + code only). |
+| #   | Topic                      | Placement                                                       | Content                                                                                                                                                                                                                                                                               |
+| --- | -------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1  | Raw HTTP                   | New section near the top of **Lesson 1**                        | One `curl` POST to `/v1/messages` mirroring the first Python example; the point: the SDK is a thin convenience over JSON-over-HTTP — headers (`x-api-key`, `anthropic-version`), body, response shape.                                                                                |
+| B2  | Extended thinking / effort | **Lesson 2** (part of the rewrite, see A)                       | Adaptive thinking, effort tiers, thinking-block handling, streaming interaction.                                                                                                                                                                                                      |
+| B3  | Model selection & pricing  | New section in **Lesson 5**                                     | Tier table (Haiku 4.5 / Sonnet 5 / Opus 4.8 with indicative $/MTok and context sizes, explicitly flagged as "check the pricing page — these change"), routing heuristics (cheap model for classification/routing, strong model for planning), and cascade/fallback as a cost pattern. |
+| B4  | Multimodal input           | **New Lesson 6**: "Beyond Text: Images, PDFs & Files" (~15 min) | Image content blocks (base64 + URL), PDF `document` blocks, when to use the Files API (reuse across requests), token cost of images, one worked extraction example ("pull the table out of this invoice PDF"). Ends with keypoints. No new animation (reuse none; text + code only).  |
 
 Module goes 5 → 6 lessons; all lesson counts in the UI derive from the data, so no other code changes.
 

@@ -14,16 +14,16 @@ the `ConceptAnimation` public API (`name`, `caption`).
 
 **Step-driven (8)** — controls: ⏮ prev · ▶/⏸ play-pause · ⏭ next · ↺ replay · "n/N" indicator
 
-| name | steps |
-| --- | --- |
-| tool-calling | 4 (one per message) |
-| mcp-handshake | 6 (one per message) |
-| react-pattern | 5 (one per trace row) |
-| context-window | 6 (5 segments fill + compaction) |
-| chunking | 3 (one per strategy) |
-| workflow-patterns | 5 (one per pattern) |
-| capstone-pipeline | 7 (6 stages + retry loop) |
-| injection-attack | 3 (injection → defense → outcomes) |
+| name              | steps                              |
+| ----------------- | ---------------------------------- |
+| tool-calling      | 4 (one per message)                |
+| mcp-handshake     | 6 (one per message)                |
+| react-pattern     | 5 (one per trace row)              |
+| context-window    | 6 (5 segments fill + compaction)   |
+| chunking          | 3 (one per strategy)               |
+| workflow-patterns | 5 (one per pattern)                |
+| capstone-pipeline | 7 (6 stages + retry loop)          |
+| injection-attack  | 3 (injection → defense → outcomes) |
 
 **Continuous loops (8)** — controls: ▶/⏸ · ↺
 
@@ -35,7 +35,7 @@ memory-types, multi-agent, eval-loop.
 ### `components/animations/controller.tsx` (new)
 
 - `AnimPlaybackContext` — `{ playing: boolean, step: number }`. `playing` is the
-  *effective* playing state (user intent AND in-view AND not reduced-motion-idle).
+  _effective_ playing state (user intent AND in-view AND not reduced-motion-idle).
 - `useAnimPlayback()` — hook consumed by animation components.
 - `ControlBar` — button row rendered in the figure footer next to the caption.
   Step anims get prev/play-pause/next/replay + step indicator; loop anims get
@@ -74,7 +74,7 @@ memory-types, multi-agent, eval-loop.
   switching the `animate`/`transition` props — no mid-flight freeze hacks.
 - `primitives.tsx`: `FlowEdge` pauses its CSS dash animation via
   `animation-play-state: paused` when not playing; add a small `StepReveal`
-  helper (`<g>` that reveals at step *i* and dims when passed) to cut
+  helper (`<g>` that reveals at step _i_ and dims when passed) to cut
   duplication across the 8 step anims.
 
 ## Pacing polish

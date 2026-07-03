@@ -1,7 +1,14 @@
 "use client";
 
+import {
+  Stage,
+  Node,
+  FlowEdge,
+  StepReveal,
+  StepFade,
+  loopMotion,
+} from "./primitives";
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge, StepReveal } from "./primitives";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- Orchestrator-workers multi-agent ---------- */
@@ -45,26 +52,22 @@ export function MultiAgentAnim() {
           key={i}
           r={5}
           fill={w.color}
-          initial={false}
-          animate={
-            playing
-              ? {
-                  cx: [320, w.x + 70, w.x + 70, 320],
-                  cy: [74, 140, 140, 74],
-                  opacity: [1, 1, 0.4, 1],
-                }
-              : { cx: w.x + 70, cy: 140, opacity: 0.7 }
-          }
-          transition={
-            playing
-              ? {
-                  duration: 3.6,
-                  repeat: Infinity,
-                  delay: i * 1.2,
-                  ease: "easeInOut",
-                }
-              : { duration: 0.3 }
-          }
+          {...loopMotion(
+            playing,
+            {
+              animate: {
+                cx: [320, w.x + 70, w.x + 70, 320],
+                cy: [74, 140, 140, 74],
+                opacity: [1, 1, 0.4, 1],
+              },
+              transition: {
+                duration: 3.6,
+                delay: i * 1.2,
+                ease: "easeInOut",
+              },
+            },
+            { cx: w.x + 70, cy: 140, opacity: 0.7 },
+          )}
         />
       ))}
       <text
@@ -95,12 +98,7 @@ export function WorkflowPatternsAnim() {
   return (
     <Stage viewBox="0 0 640 200">
       {PATTERNS.map((p, i) => (
-        <motion.g
-          key={i}
-          initial={false}
-          animate={{ opacity: i === step ? 1 : 0.3 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
+        <StepFade key={i} opacity={i === step ? 1 : 0.3}>
           <rect
             x={60}
             y={16 + i * 34}
@@ -130,7 +128,7 @@ export function WorkflowPatternsAnim() {
           >
             {p.desc}
           </text>
-        </motion.g>
+        </StepFade>
       ))}
       <text
         x={320}
