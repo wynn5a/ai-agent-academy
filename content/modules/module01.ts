@@ -8,7 +8,7 @@ export const module01: Module = {
   phase: 1,
   phaseTitle: "Foundations from raw APIs",
   description:
-    "No frameworks. Raw HTTP/SDK calls only. Everything an agent does reduces to these mechanics: the message array, tool calling, structured outputs, streaming, tokens, and robust error handling.",
+    "No frameworks. Raw HTTP/SDK calls only. Everything an agent does reduces to these mechanics: the message array, tool calling, structured outputs, thinking & effort, streaming, multimodal input, tokens, and robust error handling.",
   outcomes: [
     "Explain and implement the chat message format (system/user/assistant/tool roles) from memory",
     "Implement tool calling end-to-end: schema → model emits call → you execute → return result → model continues",
@@ -16,6 +16,8 @@ export const module01: Module = {
     "Stream responses token-by-token and explain why streaming matters for agent UX",
     "Count tokens, estimate cost per call, and reason about context-window budgets",
     "Handle rate limits, timeouts, and refusals with exponential backoff and graceful degradation",
+    "Enable adaptive thinking, tune effort, and explain why frontier models replaced sampling parameters",
+    "Send images and PDFs as content blocks and combine document input with structured outputs for extraction",
   ],
   lessons: [
     {
@@ -1042,16 +1044,16 @@ resp = client.beta.messages.create(
     },
     {
       question:
-        "What do temperature and top_p do, and what suits a tool-calling agent?",
+        "What does temperature actually do, and what happens if you send temperature=0.7 to a mid-2026 frontier Claude model like claude-sonnet-5?",
       options: [
-        "Temperature scales the token probability distribution, top_p truncates it to a probability mass; agents want temperature ~0–0.3, adjusting one parameter, not both",
-        "Temperature controls response length, top_p controls politeness; agents want both maxed",
-        "Both control randomness identically; set them equal for stability",
-        "Temperature only matters for images; top_p only for code",
+        "It scales the token probability distribution before sampling; on current frontier Claude models the parameter was removed entirely, so the request is rejected with a 400 — control moved to adaptive thinking and the effort parameter",
+        "It controls response length; the request succeeds but responses get longer",
+        "It re-ranks the training data; the request succeeds with more creative output",
+        "Nothing — temperature is accepted identically by every model and provider",
       ],
       correct: 0,
       explanation:
-        "Temperature rescales logits (flatter vs. sharper distribution); top_p samples from the smallest set of tokens with cumulative probability ≥ p. For precise JSON and argument generation, keep temperature low and leave top_p alone.",
+        "Temperature rescales logits before softmax (flatter vs. sharper distribution). Frontier Claude models (Sonnet 5, Opus 4.7+) removed temperature/top_p/top_k — sending them returns a 400 — and expose adaptive thinking plus output_config.effort instead. Sampling params still exist on most other providers and older models, so know both regimes.",
     },
     {
       question:
@@ -1130,6 +1132,58 @@ resp = client.beta.messages.create(
       explanation:
         "Streaming's entire value is rendering deltas as they arrive (print with flush, or push SSE to your UI). Buffering until the end recreates non-streaming latency with extra code.",
     },
+    {
+      question:
+        "What are adaptive thinking and the effort parameter on current frontier models?",
+      options: [
+        "Thinking makes responses stream faster; effort sets the number of retries",
+        "Adaptive thinking lets the model decide when and how much to reason before answering (emitting billed thinking blocks); effort scales how much total work — reasoning, tool use, output — the model spends on the task",
+        "Both are prompt-engineering techniques with no API surface",
+        "They control GPU allocation on the provider's side",
+      ],
+      correct: 1,
+      explanation:
+        "The control surface moved up a level: instead of shaping token randomness with temperature, you budget the model's work. Thinking blocks are billed output tokens and must be resent verbatim in multi-turn conversations, like any assistant content.",
+    },
+    {
+      question:
+        "Your pipeline classifies one million support tickets per day and drafts personalized responses for the ~2% that escalate. What's the cost-sane model strategy?",
+      options: [
+        "Use the flagship model for everything — quality is all that matters",
+        "Use the cheapest model for everything and accept the quality loss on escalations",
+        "Route: a small fast model (e.g. Haiku-tier) for the million classifications, a stronger model only for the ~20K escalation drafts — order-of-magnitude savings with no quality loss where it matters",
+        "Fine-tune a custom model first; routing is premature optimization",
+      ],
+      correct: 2,
+      explanation:
+        "Model routing is the single biggest cost lever — bigger than caching or backoff tuning. Tier price spreads are ~5–25×, and classification at scale is exactly what small models are for. The cascade variant (cheap first, escalate on low confidence) is the follow-up pattern interviewers probe.",
+    },
+    {
+      question:
+        "What is the most reliable way to get schema-conforming JSON from a current Anthropic model?",
+      options: [
+        'Prompt "respond only with valid JSON" and parse the reply',
+        "JSON mode, which guarantees the exact schema",
+        "Native structured outputs — pass your JSON schema via output_config.format (or use the SDK's parse() helper) so decoding is constrained to the schema; validate client-side for constraints like numeric ranges that constrained decoding can't enforce",
+        "Ask for XML instead, which models produce more reliably",
+      ],
+      correct: 2,
+      explanation:
+        "Prompting gives no guarantee and JSON mode only guarantees syntax, not shape. Constrained decoding guarantees structure — but not numeric min/max or string lengths, which is why you still validate with Pydantic/Zod and retry with the error fed back. The forced-tool-call trick remains the portable fallback on models without native support.",
+    },
+    {
+      question:
+        "Your agent consults the same 300-page PDF manual on every session. What's the right way to send it, and what else do you need for it to be economical?",
+      options: [
+        "Re-upload it as base64 every call — simplest is best",
+        "Upload once via the Files API and reference the file_id in each request, and put the stable prefix behind a prompt-cache breakpoint — the Files API stops re-uploading, caching stops re-processing the tokens at full price",
+        "Paste the manual's text into the system prompt once; the server remembers it",
+        "Split it into 300 single-page requests to stay under rate limits",
+      ],
+      correct: 1,
+      explanation:
+        "Two separate costs: upload bandwidth (solved by file_id references) and input-token processing, which recurs every call regardless (solved by prompt caching at ~0.1× for cache reads). 'The server remembers it' contradicts Lesson 1 — the API is stateless.",
+    },
   ],
   lab: {
     title: "Tool-Calling CLI Assistant",
@@ -1194,13 +1248,14 @@ def run_turn(messages, budget):
     stretchGoals: [
       "Stream the final answer token-by-token while still handling tool-use turns",
       "Add prompt caching with a cache breakpoint after the system prompt + tools, and log cache-read savings",
+      "Add a --think flag that enables adaptive thinking (thinking={'type': 'adaptive'}) and prints the model's reasoning summary before the final answer",
       "Practical test: re-implement the minimal one-tool loop from memory in under 30 minutes",
     ],
   },
   resources: [
     {
       title: "Anthropic — Tool use docs",
-      url: "https://docs.claude.com/en/docs/build-with-claude/tool-use",
+      url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
       description:
         "The canonical reference for the message shapes used in Lab 01.",
       kind: "docs",
@@ -1210,6 +1265,13 @@ def run_turn(messages, budget):
       url: "https://platform.openai.com/docs/guides/function-calling",
       description:
         "Compare the two vendors' shapes — interviews ask about both.",
+      kind: "docs",
+    },
+    {
+      title: "OpenAI — Migrate to the Responses API",
+      url: "https://platform.openai.com/docs/guides/migrate-to-responses",
+      description:
+        "Chat Completions vs. Responses API, side by side — interviews still ask about both surfaces.",
       kind: "docs",
     },
     {
