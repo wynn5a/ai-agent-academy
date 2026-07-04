@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson04: Lesson = {
   slug: "reranking-and-query-rewriting",
   title: "Reranking & Query Rewriting (incl. HyDE)",
-  minutes: 25,
+  minutes: 35,
   summary:
     "First-stage retrieval is built for recall: get the answer somewhere in the top 50, cheap. A cross-encoder reranker then buys you precision in the top 5 — the biggest quality win per engineering hour. And when the user's question is a lousy search query, rewrite it before retrieving.",
   sections: [
@@ -71,6 +71,18 @@ def retrieve_pipeline(query: str, use_rerank: bool = True) -> list[int]:
     },
     {
       type: "heading",
+      text: "After the rerank: three decisions people forget",
+    },
+    {
+      type: "list",
+      items: [
+        "**How many chunks to pass (k).** More chunks raise recall but dilute precision, burn prompt budget, and give the model more rope to ground in the wrong passage. k=3–8 is the usual range; tune it on the eval set like everything else, and remember k interacts with chunk size — 5 × 350 words is a very different prompt from 5 × 1,200.",
+        "**Order matters in the prompt.** Models attend more reliably to the start and end of the context than the middle (the 'lost in the middle' effect). Put the strongest chunks first — or first *and* last — rather than trusting the model to weigh ten passages evenly. The reranker's scores tell you the order; use them.",
+        "**Scores are an abstention signal.** A cross-encoder's top score being *low* is information: the shortlist is weak, and weak context invites the model to freelance. Threshold it — below the bar, retrieve differently (rewrite, decompose) or refuse honestly. This wires directly into Lesson 5's 'confidently answers unanswerable questions' defense, and it's the cheapest hallucination guard in the whole pipeline.",
+      ],
+    },
+    {
+      type: "heading",
       text: "When the question isn't a good query",
     },
     {
@@ -92,18 +104,18 @@ llm = anthropic.Anthropic()
 def hyde_probe(query: str) -> str:
     """Generate a hypothetical answer passage; embed IT instead of the query."""
     resp = llm.messages.create(
-        model="claude-sonnet-4-5", max_tokens=200, temperature=0.3,
+        model="claude-sonnet-5", max_tokens=200,
         messages=[{"role": "user", "content":
             "Write one short documentation-style paragraph that would plausibly "
             f"answer this question: {query}\\n"
             "It will be used only as a search probe, so generic phrasing is fine."}],
     )
-    return resp.content[0].text
+    return next(b.text for b in resp.content if b.type == "text")
 
 def decompose(query: str) -> list[str]:
     """Force a structured tool call that returns standalone sub-questions."""
     resp = llm.messages.create(
-        model="claude-sonnet-4-5", max_tokens=512, temperature=0,
+        model="claude-sonnet-5", max_tokens=512,
         tools=[{
             "name": "sub_questions",
             "description": "Record the standalone sub-questions needed to answer a complex question.",
@@ -135,13 +147,43 @@ probe_vec = encoder.encode(hyde_probe("why do ingestion jobs stall on large PDFs
       text: "HyDE and decomposition add latency and tokens to **every query** that uses them. Measure before adopting: run your eval set with and without, and keep them only if the retrieval metrics move. A common production compromise is conditional use — a cheap classifier (or the agent itself) decides whether a query needs decomposition. This is the door to **agentic RAG**: retrieval as a tool the agent calls repeatedly, reformulating queries when results look thin, at the cost of latency, tokens, and debuggability compared to a fixed pipeline.",
     },
     {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "Match the fix to the symptom, one line each: (a) turn 3 of a chat, user asks 'and does it work with SSO?' — retrieval returns SSO docs for the wrong product; (b) 'compare our EU and US retention policies' scores zero on recall; (c) short vague queries ('pdf stuck') retrieve poorly though the runbook exists; (d) queries containing exact config keys already retrieve perfectly.",
+      answer:
+        "(a) **Query rewriting with chat history** — resolve 'it' to the product under discussion before retrieval; the retriever never sees the conversation unless you put it in the query. (b) **Decomposition** — no single chunk spans both policies; split into two sub-queries, retrieve each, answer over the union. (c) **HyDE** — 'pdf stuck' is question-shaped and information-poor; a hypothetical answer paragraph ('Large PDF ingestion can stall when...') lands in the runbook's neighborhood. (d) **Nothing** — hybrid already nails exact tokens; adding rewrites here spends latency and tokens on solved queries. The senior tell is (d): knowing when to *stop* adding machinery — every technique must pay rent on the eval set.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** Your RAG chatbot is excellent on the first user message and garbage by turn three. Traces show retrieval quality collapsing across turns. Diagnose and fix.",
+      answer:
+        "Classic multi-turn failure, and the diagnosis is one sentence: **the retriever only sees the latest message, and by turn three the latest message is 'and what about the older version?'** — pronouns, ellipsis, and context-dependent fragments make terrible search probes. Confirm in traces by reading the literal query strings sent to retrieval. Fixes in order: (1) **contextualized rewriting** — a cheap, fast LLM call that rewrites the turn into a standalone query given the chat history ('does Acme Gateway v2 support SAML SSO?'); this is table stakes for RAG chat, not an optimization; (2) rewrite quality is now load-bearing → log every rewrite next to its raw turn, and add rewrites to the eval set (multi-turn eval items: history + turn → expected retrieval); (3) watch the two rewrite failure modes — *over-resolution* (injecting stale topics after the user changed subject) and *latency* (it's a serial LLM call on every turn; use the cheapest model that passes eval). **Follow-up probe:** \"could you skip the rewrite and just embed the whole conversation?\" → embedding a transcript retrieves the *conversation's* topic soup, not the current question — precision collapses; rewriting is compression with intent.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** End-to-end answer latency budget is 800ms at p95. Your pipeline: embed query → hybrid search → rerank 50 → generate. Where does the time actually go, and what do you cut when you're over budget?",
+      answer:
+        "Ballpark the stages first — knowing the shape of the numbers is the point of the question. Query embedding (small local model): ~5–20ms. Hybrid search (ANN + BM25): ~5–30ms. Cross-encoder rerank of 50: ~50–200ms on CPU, ~15ms on GPU. Generation: **everything else** — hundreds of ms to seconds; it dominates. So the honest first answer: the retrieval side is rarely the bottleneck, and cutting rerank to save 100ms while generation takes 2s is optimizing the wrong stage. Real levers in order: (1) **stream the generation** — perceived latency is time-to-first-token (Module 1), which retrieval work delays serially, so the retrieval stages *are* worth trimming for TTFT; (2) rerank fewer candidates (50→20 loses little), or use a lighter reranker; (3) make rewrites/HyDE **conditional** — they're serial LLM calls that double the pre-generation latency, so gate them on a cheap heuristic (query length, chat context present); (4) cache — frequent-query embedding cache, even full answer cache for FAQ-shaped traffic. And say the discipline: measure per-stage latency in the trace before cutting anything. **Follow-up probe:** \"TTFT is fine but total time ballooned after adding decomposition\" → you're doing N retrievals + one big generation serially; parallelize the sub-query retrievals and cap N.",
+    },
+    {
       type: "keypoints",
       points: [
         "Two-stage design: cheap high-recall retrieval to top-50, cross-encoder rerank to top-5.",
         "Bi-encoders encode independently (precomputable, scalable); cross-encoders attend jointly (accurate, per-pair cost) — that asymmetry dictates their roles.",
         "Rewriting fixes conversational queries; decomposition fixes multi-hop questions single-shot RAG structurally cannot answer.",
         "HyDE: embed a hypothetical *answer* because answer-shaped text lives nearer to documents than question-shaped text.",
-        "Every query-time enhancement costs latency and tokens — adopt only what your eval set proves out.",
+        "After reranking: tune k on the eval set, order strongest chunks first (lost-in-the-middle), and threshold low scores into abstention or re-retrieval.",
+        "Multi-turn chat requires contextualized query rewriting — the retriever never sees the conversation unless the rewrite puts it there.",
+        "Every query-time enhancement costs latency and tokens — adopt only what your eval set proves out. Generation dominates total latency; retrieval stages dominate TTFT.",
       ],
     },
   ],

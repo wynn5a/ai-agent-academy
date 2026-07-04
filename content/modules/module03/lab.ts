@@ -65,7 +65,7 @@ def run_eval(eval_set_path: str, report_path: str) -> None:
     # for each config (dense/bm25/hybrid/hybrid+rerank):
     #   precision@5, recall@5, MRR over the eval set
     # for the best config: faithfulness + answer relevance (RAGAS or
-    # your own LLM-as-judge with model="claude-sonnet-4-5")
+    # your own LLM-as-judge with model="claude-sonnet-5")
     # write eval_report.md: metrics table + 'what I'd improve' section
     ...`,
       explanation:

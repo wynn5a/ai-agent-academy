@@ -155,4 +155,69 @@ export const quiz03: QuizQuestion[] = [
     explanation:
       "Short questions and long documentation passages occupy different regions of embedding space. A plausible fake answer — even a factually wrong one — is *shaped* like the real passage you're hunting, so its vector lands in the right neighborhood. Cost: one extra LLM call per query, so let your eval set decide if it earns its keep.",
   },
+  {
+    question:
+      "\"Context windows are a million tokens — why not paste the whole corpus into every prompt instead of building RAG?\" Which answer covers the senior objections?",
+    options: [
+      "There is no reason; long context has made RAG obsolete",
+      "Cost (re-processing the corpus per query, and any corpus edit invalidates the cached prefix), degraded attention over huge mostly-irrelevant contexts, no per-user access control or citations, and corpora that outgrow any window — though a single small document that fits is legitimately better served without a pipeline",
+      "Stuffed contexts are forbidden by API terms of service",
+      "RAG is only kept for backwards compatibility with old vector databases",
+    ],
+    correct: 1,
+    explanation:
+      "RAG decides *what deserves* the window; long context is how much fits once decided. The access-control point is the most-forgotten: retrieval-time filtering keeps user A's documents out of user B's prompt, which a stuffed context cannot do. And the concession matters — long context did kill RAG's low end.",
+  },
+  {
+    question:
+      "When should you fine-tune a model versus building RAG, for a product that must answer questions about internal documentation?",
+    options: [
+      "Fine-tune for the facts and add RAG only if tuning is too expensive",
+      "They're interchangeable; pick by team familiarity",
+      "Fine-tune for behavior (style, format, domain vocabulary); use RAG for knowledge — tuned-in facts are slow to update, impossible to cite, and make hallucination more fluent, while an index updates per docs release and yields checkable citations",
+      "Always do both from day one",
+    ],
+    correct: 2,
+    explanation:
+      "The clean division: how the model should *act* vs what it should *know*. Facts in weights can't be updated without retraining, carry no provenance, and a domain-tuned model hallucinates in fluent domain voice. They compose fine — but knowledge freshness, citations, and permissions all live on the RAG side.",
+  },
+  {
+    question:
+      "What problem do contextual retrieval and small-to-big (parent-document) retrieval both solve, and what's the shared principle?",
+    options: [
+      "They reduce vector database memory usage through compression",
+      "Chunks are read out of context and can't be both crisp to embed and rich enough to answer from — contextual retrieval prepends situating text before embedding, small-to-big embeds small units but hands the model their parent section; both decouple the retrieval representation from the generation payload",
+      "They replace the need for a reranker",
+      "They make BM25 unnecessary by improving embeddings",
+    ],
+    correct: 1,
+    explanation:
+      "What you match on and what the model reads no longer have to be the same bytes. Contextual retrieval pays one cheap offline LLM call per chunk (Batch API + caching make it ~free at scale) to make elliptical chunks self-describing; small-to-big gets precise vectors AND sufficient evidence. Both attack chunking's core tension instead of tuning around it.",
+  },
+  {
+    question:
+      "Your multi-tenant vector search returns almost nothing for small tenants, though their documents are indexed. What's the likely cause?",
+    options: [
+      "Small tenants' embeddings are lower quality",
+      "Post-filtering: the ANN search retrieves top-k over the whole corpus first, then applies the tenant filter — a tenant owning 1% of the corpus gets ~0 of the k results; the fix is pre-filtering (the filter constrains the graph walk) or, crudely, oversampling before filtering",
+      "BM25 requires a minimum corpus size per tenant",
+      "The cosine similarity threshold is too high for small tenants",
+    ],
+    correct: 1,
+    explanation:
+      "The order of filter-vs-search is the whole bug. Pre-filtering makes the ANN walk only visit matching vectors (Qdrant's default); post-filtering discards most of k for selective filters. For hard isolation, per-tenant collections are the alternative — more operational sprawl, zero cross-tenant risk. Also remember filters must be enforced server-side; the tenant id never comes from the caller unverified.",
+  },
+  {
+    question:
+      "Before trusting an LLM judge's faithfulness scores, what validation does a senior engineer run?",
+    options: [
+      "None — judge models are more consistent than humans by construction",
+      "Run the judge twice and check it agrees with itself",
+      "Hand-label 30–50 answers, measure judge-vs-human agreement, and iterate on the judge prompt until agreement is high; de-bias by construction (different model family than the generator, claim-level scoring, order-randomized comparisons, pinned judge version); keep known-good/known-bad canaries in every run to catch judge drift",
+      "Ask the judge to rate its own confidence and filter low-confidence verdicts",
+    ],
+    correct: 2,
+    explanation:
+      "An unvalidated judge is a random-number generator with confidence. The known biases — position, self-preference, verbosity — are handled by construction, and calibration against human labels is what earns the dashboard its credibility. The judge is a model in production: it gets an eval too.",
+  },
 ];

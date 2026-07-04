@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson01: Lesson = {
   slug: "why-rag-and-the-pipeline",
   title: "Why RAG, and the Anatomy of the Pipeline",
-  minutes: 25,
+  minutes: 35,
   summary:
     "Models know nothing about your private data and their world knowledge is frozen at training time. Retrieval-augmented generation fixes both — but only as well as its weakest stage. Meet the pipeline and the geometry of embeddings.",
   sections: [
@@ -116,10 +116,10 @@ def answer(query: str) -> str:
         f"Context:\\n{context}\\n\\nQuestion: {query}"
     )
     resp = llm.messages.create(
-        model="claude-sonnet-4-5", max_tokens=512,
+        model="claude-sonnet-5", max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
-    return resp.content[0].text
+    return next(b.text for b in resp.content if b.type == "text")
 
 print(answer("How do I recover my account?"))`,
       explanation:
@@ -131,12 +131,54 @@ print(answer("How do I recover my account?"))`,
       text: "**RAG quality is retrieval quality.** If the right passage isn't in the prompt, no amount of model intelligence can produce a grounded answer — and if the wrong passages are, the model will happily ground itself in garbage. That's why this module builds the eval harness *alongside* the pipeline, not after it: you cannot tune six stages by vibes.",
     },
     {
+      type: "heading",
+      text: "RAG vs. the alternatives: the question every interview opens with",
+    },
+    {
+      type: "paragraph",
+      text: "Before any pipeline detail, expect: **\"models have million-token context windows now — why not just paste the whole corpus in?\"** and **\"why not fine-tune instead?\"** These deserve crisp answers. Against **context stuffing**: (1) *cost* — you'd re-send and re-process the corpus on every query (Module 1's quadratic lesson at corpus scale; caching helps but a 500K-token cached prefix still costs real money per read, and any corpus update invalidates it); (2) *attention* — retrieval quality inside a stuffed window degrades, with mid-context evidence most at risk, whereas RAG hands the model 5 pre-vetted passages; (3) *access control* — RAG filters at retrieval time so user A never gets user B's documents in-prompt; a stuffed context is all-or-nothing; (4) *scale* — corpora outgrow any window. When the 'corpus' is genuinely one document that fits comfortably, though, skipping RAG *is* the senior answer — no pipeline beats no pipeline.",
+    },
+    {
+      type: "paragraph",
+      text: "Against **fine-tuning**: tuning teaches *behavior* — style, format, domain vocabulary, tool-use patterns — but is a poor store of *facts*: it's slow to update (retrain per docs change vs. re-index one file), unauditable (no citation possible — the fact is smeared across weights), and prone to making confident hallucination *worse*, since the model now sounds native in your domain. The clean division to say out loud: **fine-tune for how the model should act, RAG for what it should know.** They compose — a tuned model with retrieval — but knowledge freshness, provenance, and per-user permissions all live on the RAG side.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "Symptom → stage. For each production complaint, name the pipeline stage you'd inspect first: (a) answers cite passages that are visibly half a sentence; (b) asking about error code ERR_CONN_5031 retrieves generic networking docs; (c) the right passage is in the prompt but the answer contradicts it; (d) answers about the pricing page are correct but cite a page deleted last month.",
+      answer:
+        "(a) **Chunking** — mid-thought cuts are visible right in the citations; read raw chunks before touching anything else. (b) **Retrieve** — the dense-retrieval blind spot for rare exact tokens; the fix is hybrid search (Lesson 3), not a better prompt. (c) **Generate** — retrieval delivered; this is unfaithfulness, a grounding/prompt/eval problem (Lesson 5). (d) **Ingest/index freshness** — the pipeline is answering from a stale index; you need re-indexing on document change and delete-propagation, which is an offline-lane operations problem no query-time stage can fix. The interview skill being tested: mapping symptoms to stages instead of reflexively reaching for a bigger model.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Context windows are a million tokens now. Convince me RAG isn't dead.\" — give the four-part answer, then concede what *did* change.",
+      answer:
+        "Four parts, in order of interview weight: **cost** (every query re-processes whatever you stuff — at 500K tokens × thousands of queries/day, retrieval's 5-passage prompt wins by orders of magnitude, cache or no cache); **quality** (a model attending over 5 relevant passages beats one hunting through 500K tokens of mostly-irrelevant text — long-context recall degrades, especially mid-window); **access control and provenance** (retrieval-time filtering enforces per-user permissions and yields checkable citations; a stuffed window can do neither); **freshness at scale** (re-index one changed file vs. rebuild a giant cached prefix). Then the concession that marks seniority: long context *did* kill RAG's low end — a single manual, one contract, a day's logs now go straight into context, and hybrid designs (retrieve whole *documents* rather than snippets, let the model read generously) got better. The line to land: **RAG is how you decide what deserves the window; long context is how much fits once you've decided.** **Follow-up probe:** \"where's the crossover?\" → roughly when the corpus fits in-window *and* is queried rarely enough that re-processing beats maintaining a pipeline — a cost inequality you can sketch, not a dogma.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** Product wants the support bot to 'know our product deeply' and suggests fine-tuning on the docs. Steer the decision.",
+      answer:
+        "Split the ask into its two real requirements. *Knowing the facts*: RAG — updatable per docs release, citable (support answers need provenance), permission-aware, and testable with retrieval metrics. Fine-tuning on docs is a fact store you can't update without retraining, can't cite, and that makes hallucination more fluent — the failure mode is the bot confidently describing a feature as it existed eight months ago. *Sounding like our product* (tone, terminology, response format, escalation habits): that's behavior, where fine-tuning (or often just a strong system prompt with exemplars — cheaper, try it first) legitimately helps. So the recommendation: RAG for knowledge now; revisit tuning only if style/format problems survive prompt iteration, and even then tune on *conversations*, not documentation. **Follow-up probe:** \"how do you prove the RAG bot 'knows the product' to stakeholders?\" → the Lesson 5 eval set built from real support tickets, with accuracy and citation-validity numbers — never a demo.",
+    },
+    {
       type: "keypoints",
       points: [
         "RAG = search your corpus at question time, answer **only from retrieved evidence, with citations**.",
         "Two lanes: offline (ingest → chunk → embed → index) and online (retrieve → rerank → generate).",
         "Embeddings map text to vectors where semantic neighbors are geometric neighbors; cosine similarity finds them.",
         "Bi-encoders encode query and document independently — fast (precomputable) but blunt.",
+        "RAG vs long context: retrieval decides *what deserves* the window (cost, attention, permissions, freshness); long context is how much fits once decided.",
+        "Fine-tune for behavior, RAG for knowledge — tuned facts are stale, uncitable, and fluently wrong.",
         "Every stage fails silently; the eval harness is a first-class component, not an afterthought.",
       ],
     },

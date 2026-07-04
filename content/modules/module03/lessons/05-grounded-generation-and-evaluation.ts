@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson05: Lesson = {
   slug: "grounded-generation-and-evaluation",
   title: "Grounded Generation & Evaluation from Day One",
-  minutes: 30,
+  minutes: 40,
   summary:
     "The senior differentiator: citations the reader can check, a labeled eval set, retrieval metrics (precision@k, recall@k, MRR), and generation metrics (faithfulness, answer relevance). If you can't produce a metrics table, you don't know if your RAG works.",
   sections: [
@@ -30,16 +30,19 @@ export const lesson05: Lesson = {
         "'The corpus does not contain enough information to answer this.'"
     )
     resp = llm.messages.create(
-        model="claude-sonnet-4-5", max_tokens=1024, temperature=0,
+        model="claude-sonnet-5", max_tokens=1024,
         system=system,
         messages=[{"role": "user",
                    "content": f"Context:\\n{context}\\n\\nQuestion: {query}"}],
     )
-    answer = resp.content[0].text
+    answer = next(b.text for b in resp.content if b.type == "text")
     cited = sorted({int(m) for m in re.findall(r"\\[(\\d+)\\]", answer)})
-    return {"answer": answer, "cited_passages": cited, "chunk_ids": chunk_ids}`,
+    valid = [c for c in cited if 1 <= c <= len(chunk_ids)]
+    return {"answer": answer, "cited_passages": valid,
+            "invalid_citations": [c for c in cited if c not in valid],
+            "chunk_ids": chunk_ids}`,
       explanation:
-        'Three load-bearing choices: temperature 0 (grounded QA wants determinism), an explicit refusal string (so "can\'t answer" is machine-detectable, not prose), and parsing the citation markers back out — which lets you verify every cited passage exists and, in the eval harness, check whether the *right* sources got cited.',
+        "Three load-bearing choices: an explicit refusal string (so \"can't answer\" is machine-detectable, not prose), parsing the citation markers back out, and **validating them against the passages that actually exist** — a model that cites [7] when you sent five passages just told you, for free, that it's fabricating; log `invalid_citations` as a first-class unfaithfulness signal. In the eval harness the same parse also checks whether the *right* sources got cited.",
     },
     {
       type: "paragraph",
@@ -116,6 +119,10 @@ for name, search in CONFIGS.items():
       text: "**Faithfulness**: is every claim in the answer supported by the retrieved context? **Answer relevance**: does the answer actually address the question (a perfectly faithful non-answer scores high on one, low on the other)? Both are measured with **LLM-as-judge**: decompose the answer into atomic claims, then ask a judge model whether each claim is entailed by the context — faithfulness is the supported fraction. The **RAGAS** library packages these (plus context precision/recall) as off-the-shelf metrics; use it in the lab, but implement faithfulness once by hand so you can explain — and distrust — the judge.",
     },
     {
+      type: "paragraph",
+      text: "\"Distrust the judge\" deserves specifics, because **an unvalidated judge is a random-number generator with confidence**. The known biases: *position bias* (in A/B comparisons, judges favor whichever answer they read first — always score both orders and average); *self-preference* (a model rates its own family's outputs higher — use a different model as judge than as generator when you can); *verbosity bias* (longer answers score higher at equal correctness); and *rubric drift* (vague criteria like 'is this good?' produce incoherent scores — judge one narrow question per call, with the rubric spelled out). The calibration ritual before trusting any judge: hand-label 30–50 answers yourself, run the judge over them, and check agreement; if judge-vs-human agreement is poor, fix the judge prompt before believing a single dashboard number. Seniors treat the judge as a component with its own eval — juniors treat its output as ground truth.",
+    },
+    {
       type: "animation",
       name: "eval-loop",
       caption:
@@ -128,12 +135,41 @@ for name, search in CONFIGS.items():
       text: "Your system confidently answers questions the corpus can't support? Three mitigations, layered: (1) **prompt** — an explicit, exact refusal path; (2) **threshold** — abstain when top retrieval/rerank scores are weak, because low-scoring context invites the model to freelance; (3) **measure** — faithfulness and citation checks in the eval loop, including the unanswerable questions in your eval set. High recall@5 but wrong answers means retrieval delivered and generation dropped the ball — that's a faithfulness problem, not a search problem.",
     },
     {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A teammate builds the eval set by having the RAG system's own generator model draft one question per chunk, then — pressed for time — skips human verification and ships. Retrieval metrics come back at a glorious P@5 = 0.94. Two weeks later, real users report constant retrieval misses. What inflated the number?",
+      answer:
+        "Two compounding biases. **Lexical leakage**: LLM-drafted questions parrot the source chunk's exact vocabulary ('What does the retry_backoff_max flag configure?' straight from a chunk about `retry_backoff_max`), so both BM25 and dense retrieval find the source trivially — the eval measures string echo, not retrieval. Real users ask 'why does it keep retrying forever?' — paraphrase, vaguer, no shared terms. **Distribution mismatch**: one question per sampled chunk means every question is answerable, single-hop, and chunk-aligned; real traffic includes multi-hop questions, unanswerables, and questions whose evidence straddles chunks. The number was real; the test was fake. Fixes: human-verify and *rewrite questions away from source wording*, seed the set with real user queries as soon as any exist, include unanswerables and multi-hop items, and treat a suspiciously high score as a bug in the eval before a triumph of the pipeline. The interview line: **an eval set is a claim about your traffic distribution — validate the claim, not just the pipeline.**",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Users say the RAG assistant 'gives wrong answers.' You have an eval set and one afternoon. Walk me through the debugging tree, with the metric that gates each branch.\"",
+      answer:
+        "Narrate it as a decision tree, gating each branch on a number. **Step 0**: reproduce — run the eval set, get the table: P@5, R@5, MRR per config, faithfulness, refusal accuracy. **Branch on recall@5**: *low* → the evidence never reaches the prompt; go upstream — read twenty raw chunks (chunking autopsy, Lesson 2), check whether misses cluster on exact-token queries (add/fix hybrid) or paraphrase (embedding model), and verify ANN recall vs brute force (Lesson 3). No generation work until recall recovers. *High recall but low MRR* → evidence retrieved but buried; that's the reranker's exact job — add or tune it (Lesson 4). *High recall, good MRR, low precision* → junk rides along with the evidence; retrieve fewer, rerank harder, threshold scores. **All retrieval metrics healthy but answers still wrong** → generation: check faithfulness (claims vs context), invalid-citation rate, and whether wrong answers correlate with low rerank scores (abstention threshold missing). **Also always check the unanswerable subset** — if refusal accuracy is poor, users experience confident fabrication as 'wrong answers' regardless of retrieval quality. Close with discipline: one change per re-run, and the failing eval items become regression fixtures (Module 2's habit). **Follow-up probe:** \"everything's green but users still complain\" → the eval set no longer matches traffic — sample recent production queries, label them, and refresh the set; green dashboards on a stale distribution are how RAG rots silently.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Your faithfulness metric comes from an LLM judge. Convince me I should believe it.\" — the validation story, end to end.",
+      answer:
+        "Structure: calibrate, de-bias, monitor. **Calibrate**: hand-label 30–50 answers for faithfulness yourself (or with a teammate for inter-rater agreement — if two humans can't agree, no judge can be validated against you); run the judge on the same items; report agreement. Below ~85–90% agreement, iterate on the judge prompt — narrower rubric, claim-by-claim decomposition instead of holistic scores, explicit examples of supported vs unsupported — and re-calibrate. **De-bias by construction**: judge a *different model family* than the generator (self-preference), score claims individually rather than whole answers (verbosity bias), randomize or dual-order any pairwise comparisons (position bias), and pin the judge model version so scores are comparable across weeks. **Monitor**: keep a canary set of known-faithful and known-unfaithful answers in every eval run — if the judge's scores on the canaries drift, the judge changed, not your pipeline; and spot-check a random 5% of judge verdicts by hand each cycle. The one-liner that lands the point: **the judge is a model in production — it gets an eval too.** **Follow-up probe:** \"judge agreement is 92% — done?\" → check *which* 8% disagree: if they're all near-miss borderline claims, fine; if the judge systematically passes fabricated numbers or misses negations, the 92% is hiding a correlated blind spot your users will find.",
+    },
+    {
       type: "keypoints",
       points: [
-        "Ground hard: context-only answers, per-claim citations, an exact machine-detectable refusal string, temperature 0.",
-        "Build a ≥50-item eval set: LLM-drafted, human-verified, with unanswerable questions included.",
+        "Ground hard: context-only answers, per-claim citations, an exact machine-detectable refusal string — and validate cited passage numbers actually exist (out-of-range citations are free unfaithfulness signals).",
+        "Build a ≥50-item eval set: LLM-drafted, human-verified and rewritten away from source wording, with unanswerable and multi-hop questions included — an eval set is a claim about your traffic distribution.",
         "Precision@k = junk in prompt; recall@k = evidence missing; MRR = ordering. Each points at a different stage.",
         "Faithfulness (claims supported by context) vs. answer relevance (question addressed) — LLM-as-judge, packaged by RAGAS.",
+        "The judge is a model in production: calibrate against human labels, de-bias (position, self-preference, verbosity), pin its version, canary its drift.",
         "One change per eval run. The metrics table is the deliverable — and the interview artifact.",
       ],
     },
