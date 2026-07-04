@@ -154,4 +154,69 @@ export const quiz07: QuizQuestion[] = [
     explanation:
       "Blameless means the failure is a system property. The durable artifact states the timeline, the real root cause, why detection lagged, the fix, and — crucially — the regression test that guarantees the failure can't silently return. Honesty over cleanliness.",
   },
+  {
+    question:
+      "Your team tracks a single blended number that averages a fixed regression suite with a capability benchmark. Why is this a mistake, and what should you do instead?",
+    options: [
+      "It's not a mistake — one number is simpler for stakeholders to track",
+      "Regression evals answer 'did we break something that used to work' and capability evals answer 'are we getting better'; blending them into one average can hide a change that raises capability while quietly regressing a previously-fixed case — report the two deltas separately",
+      "Capability evals should be dropped entirely since regression evals are strictly more important",
+      "The fix is to run the blended number twice as often, not to change what it measures",
+    ],
+    correct: 1,
+    explanation:
+      "The two evals answer different questions and can move in opposite directions on the same change. A capability win that ships alongside a hidden regression looks fine in a blended average and terrible in production — report both deltas separately and treat any regression as a blocker regardless of the capability delta.",
+  },
+  {
+    question:
+      "When is a judge ensemble (multiple judge calls, majority vote) worth its added cost and latency, versus a single judge call?",
+    options: [
+      "Ensembles should always replace single judges — they're strictly more accurate",
+      "Ensembles are worth it where a single flipped verdict has outsized consequence (gating a merge or an autonomous refund); for aggregate trend tracking over many cases, single-judge noise averages out and the budget is better spent on more items",
+      "Ensembles are only useful when you don't have a validated rubric yet",
+      "Ensembles eliminate the need for human calibration entirely",
+    ],
+    correct: 1,
+    explanation:
+      "Ensembles cost roughly linearly more per case, so they pay off at high-stakes, low-volume gates where one wrong verdict matters a lot. For a large aggregate suite, per-case judge noise already averages out across the batch, and that budget is usually better spent widening the sample size instead.",
+  },
+  {
+    question:
+      "A regression suite improves from 82% to 84% (41/50 → 42/50) after a prompt change. What's the senior response?",
+    options: [
+      "Ship it immediately — any improvement is good news",
+      "Check whether the delta is distinguishable from noise: at n=50 the confidence intervals around 82% and 84% overlap heavily, so look at which specific cases flipped pass/fail (a paired comparison) rather than trusting the aggregate delta, and consider growing the suite before deciding",
+      "Revert immediately, since any suite change below 5 points is meaningless by definition",
+      "Set temperature to 0 on the agent and judge to eliminate the variance, then re-measure",
+    ],
+    correct: 1,
+    explanation:
+      "At small n, a 2-point move is well within normal re-run noise — current Claude models don't even accept a temperature parameter to try to suppress that noise (a 400 error), so the fix is statistical, not a sampling knob: check confidence intervals, look at paired flips between the two versions, and grow the suite or use k-sample majority voting before trusting a small aggregate delta.",
+  },
+  {
+    question:
+      "What's the difference between offline evals and online production monitoring, and why do you need both?",
+    options: [
+      "They're redundant; whichever is cheaper to run should be kept",
+      "Offline evals run a fixed, curated suite before shipping to catch known failure modes; online monitoring (canary sets replayed on a schedule, drift metrics, user-feedback signals treated as weak labels) watches live traffic after shipping to catch drift and unknown-unknowns like a provider-side model update — neither substitutes for the other",
+      "Online monitoring replaces offline evals entirely once you have enough production traffic",
+      "Offline evals are for tracking cost; online monitoring is for tracking correctness",
+    ],
+    correct: 1,
+    explanation:
+      "Offline evals only answer questions about inputs you anticipated. Online monitoring — canaries, drift metrics, and weak-label user feedback — catches drift on inputs and causes (like a silent provider-side model update) that a fixed pre-ship suite can never see, because it only runs once, before the world kept moving.",
+  },
+  {
+    question:
+      "Why is indirect prompt injection considered more dangerous than direct injection, and what defense specifically targets it that input filtering and 'just prompt it not to' do not?",
+    options: [
+      "Indirect injection is actually less dangerous, since the attacker never talks to the agent directly",
+      "In indirect injection, the attacker plants instructions in third-party content (a web page, email, or file) that the agent reads on behalf of an unwitting victim, who never sees the attack; because a system-prompt instruction is just more competing text with no mechanical enforcement, the effective defense is structural — e.g. tool gating that disables dangerous tools for the rest of the turn once untrusted content has entered context",
+      "Indirect injection only works against open-source models, not frontier hosted models",
+      "The defense is to increase max_tokens so the model has more room to reason past the injection",
+    ],
+    correct: 1,
+    explanation:
+      "Indirect injection is dangerous precisely because the victim has no visibility into the attack — it arrives via content the agent fetches while doing a legitimate task. Since 'never follow embedded instructions' is just another instruction competing for attention, the reliable defense is structural: gate which tools remain callable once tainted content has entered the context, rather than hoping the model resists.",
+  },
 ];
