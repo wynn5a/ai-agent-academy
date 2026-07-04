@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson02: Lesson = {
   slug: "llm-as-judge",
   title: "LLM-as-Judge, Done Honestly",
-  minutes: 30,
+  minutes: 40,
   summary:
     "When correctness is subjective — faithfulness, helpfulness, tone — you reach for a model to grade a model. That's fine, but an unvalidated judge is a random number generator with a rubric. How to validate it against humans, and how to beat position, verbosity, and self-preference bias.",
   sections: [
@@ -122,6 +122,103 @@ def win_rate(cases, judge_call, candidate, baseline) -> float:
         "The core trick: present each pair in both orders and only count a decisive verdict when the judge picks the **same original answer** regardless of position. If flipping the order flips the answer, the judge was reacting to position, not quality — so you score it a tie. A candidate prompt that clears ~0.55+ win rate against your baseline across a decent-sized set is real signal; hovering at 0.5 is not.",
     },
     {
+      type: "heading",
+      text: "Rubric design: the real work of judge quality",
+    },
+    {
+      type: "paragraph",
+      text: "Most judge failures trace back to a vague rubric, not a weak model. 'Rate the helpfulness of this response, 1–10' looks like an instruction but functions as an inkblot — the judge (and every human labeler) projects their own definition of 'helpful' onto the number, so two runs, two models, or two humans can disagree not because the answer is ambiguous but because the **question** is. The fix is decomposition: break a holistic quality into a handful of narrow, independently checkable criteria, each phrased as something closer to yes/no than a scale — 'does the response answer the literal question asked?', 'does it name a concrete next step?', 'does it avoid asserting anything not present in the provided context?' — and combine the per-criterion verdicts into a final score with an explicit rule, rather than asking one model call to hold the whole judgment in its head at once. Anchor each criterion with one real pass example and one real fail example pulled from your own data; abstract descriptions ('be helpful') anchor nothing. Treat the rubric itself as a versioned artifact — check it into source control next to the eval code, and any edit to it is a new instrument that needs re-calibration, exactly like a code change needs new tests.",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "a decomposed rubric beats a holistic score",
+      code: `# Holistic — mushy, drifts, disagreement is unexplainable:
+BAD_RUBRIC = "You are an expert evaluator. Rate helpfulness from 1 to 10."
+
+# Decomposed — each field is independently checkable and debuggable:
+GOOD_RUBRIC = """You are grading a customer-support reply against three
+criteria. Answer each independently as true/false, citing the exact
+sentence that supports your answer.
+
+1. answers_question: Does the reply directly address what the customer
+   asked, without dodging into unrelated information?
+2. names_next_step: Does the reply tell the customer what happens next
+   or what they should do?
+3. no_unsupported_claims: Does the reply avoid stating any policy, price,
+   or fact not present in the provided account/policy context?
+
+A reply "passes" only if all three are true."""
+
+def run_decomposed_judge(reply: str, context: str) -> dict:
+    resp = client.messages.create(
+        model="claude-sonnet-5", max_tokens=512,
+        tools=[{
+            "name": "record_criteria",
+            "description": "Record the three-criteria verdict.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "answers_question": {"type": "boolean"},
+                    "names_next_step": {"type": "boolean"},
+                    "no_unsupported_claims": {"type": "boolean"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["answers_question", "names_next_step",
+                            "no_unsupported_claims", "evidence"],
+            },
+        }],
+        tool_choice={"type": "tool", "name": "record_criteria"},
+        system=GOOD_RUBRIC,
+        messages=[{"role": "user",
+                   "content": f"Context:\\n{context}\\n\\nReply:\\n{reply}"}],
+    )
+    block = next(b for b in resp.content if b.type == "tool_use")
+    verdict = block.input
+    verdict["pass"] = all(verdict[k] for k in
+                          ("answers_question", "names_next_step",
+                           "no_unsupported_claims"))
+    return verdict`,
+      explanation:
+        "The `evidence` field is not decoration — forcing the judge to cite the sentence it's grading on makes disagreements auditable: when a human reviewer disputes a verdict, they check the cited evidence instead of re-litigating a fuzzy 1–10 impression. Notice each criterion is small enough that a human could grade it the same way every time — that's the bar a rubric criterion should clear before you trust a model to grade it.",
+    },
+    {
+      type: "heading",
+      text: "Judge ensembles: when they earn their cost",
+    },
+    {
+      type: "paragraph",
+      text: "A single judge call is a single point of failure in your test suite — one model's idiosyncratic blind spot can flip a verdict. An **ensemble** (the same rubric run across multiple model families, or the same call sampled multiple times, combined by majority vote or median) reduces that variance, but it multiplies cost and latency roughly linearly with ensemble size, so it's not a default. Reach for an ensemble where a **single wrong verdict has outsized consequence**: gating a merge, triggering an autonomous refund, or picking which of two prompts ships to 100% of traffic. Skip it for aggregate trend tracking over dozens or hundreds of cases — a nightly dashboard tracking a pass rate across 200 cases already averages out single-judge noise across the batch, and the same budget is almost always better spent widening the sample (more cases) than deepening the vote (more judges per case), for the statistical reason Lesson 3 makes precise: at small n, per-item noise dominates, and more independent items shrinks the noise faster than more opinions on the same item.",
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "Your team's entire judge rubric is: 'You are an expert evaluator. Rate the response's helpfulness from 1 to 10.' Judge-human agreement on your 40-example calibration set comes back at 61%. Before touching the judge model or trying a bigger model as judge, what's the first thing to fix, and how?",
+      answer:
+        "The rubric, not the model. A single holistic scale on an undefined term is the rubric-drift failure mode by construction: 'helpful' means something different to every grader, human or model, so 61% agreement is measuring **disagreement about the definition**, not a weak judge. Swapping in a bigger or better model won't fix that — it'll just produce a different, equally ungrounded projection of 'helpful' onto the same 1–10 scale. The fix: decompose the single question into 3–5 concrete, narrow criteria specific to what 'helpful' means for this task (does it answer the literal question, does it name a next step, does it avoid inventing facts), anchor each with one real pass and one real fail example from your own data, force a structured per-criterion verdict, and combine them with an explicit rule (e.g., pass only if all criteria are true). Re-run the same calibration set. Expect agreement to jump — not because the model got smarter, but because the humans and the model are now answering the same narrow, checkable question instead of each silently supplying their own definition of the vague one.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Walk me through building a judge for 'is this response appropriately empathetic' from scratch — rubric to production.\"",
+      answer:
+        "Six steps, in order. **(1) Decompose the construct**: 'empathetic' isn't gradable as one number, so break it into checkable sub-criteria — acknowledges the customer's stated problem, avoids dismissive or robotic phrasing, offers a concrete next step, matches the severity of the customer's tone. **(2) Anchor each criterion** with one real pass and one real fail example pulled from actual transcripts, not invented ones. **(3) Hand-label a calibration set** of 30–50 items spanning the difficulty spectrum, deliberately including boundary cases, ideally with a second human labeling a subset to check inter-rater agreement before blaming the judge for anything. **(4) Implement a forced-schema verdict**, one boolean field per criterion plus a cited-evidence field, measure judge-human agreement, and iterate the rubric — not the model — until it clears your bar (commonly ~85%+). **(5) Decide ensemble vs. single judge based on stakes**: is this gating an autonomous customer-facing response, or feeding a dashboard metric someone reviews weekly? **(6) Operationalize**: pin the judge's model version, keep a canary set of known pass/fail transcripts to catch silent drift if the underlying model updates, and put the rubric under version control so every edit is a tracked, re-calibrated change. **Follow-up probe:** \"agreement plateaus at 78% no matter how much you refine the rubric — now what?\" → check inter-rater agreement among the humans themselves first; if two people who hand-labeled the same items only agree ~80% of the time, the ceiling isn't the judge, it's that 'empathetic' is inherently fuzzy at this resolution — either coarsen the criterion into something less ambiguous or accept a lower bar paired with mandatory human sampling specifically on the disagreement zone.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"When would you spend the extra cost on a judge ensemble instead of a single judge call?\"",
+      answer:
+        "Frame it as a cost-vs-consequence trade, with numbers. A 3-way ensemble (say, two different model families plus a reversed-order rerun) costs roughly 3x a single call. That's worth it when a **single flipped verdict has outsized, hard-to-reverse consequence** — gating a merge to production, authorizing an autonomous refund, or picking which of two prompt candidates ships to all traffic. It is not worth it for a nightly dashboard aggregating a pass rate across hundreds of cases, because independent per-case judge noise already washes out in a large-enough mean, and the same 3x budget almost always buys more signal spent on **more cases** than on **more votes per case** — which is the same statistical logic behind why a suite of 200 items beats a suite of 50 items voted on three times each. Rule of thumb: ensemble at the point of a high-stakes, low-volume gate; widen the sample at the point of a low-stakes, high-volume trend. **Follow-up probe:** \"your 3-judge ensemble splits 2-1 on a case — what do you do?\" → don't quietly take the majority as ground truth. Log the split explicitly and route it to human review — a divided vote is precisely the population most likely to be genuinely ambiguous, and averaging over the disagreement hides exactly the information you built the ensemble to surface.",
+    },
+    {
       type: "keypoints",
       points: [
         "Use an LLM judge only for genuinely subjective qualities — faithfulness, helpfulness, tone.",
@@ -130,6 +227,8 @@ def win_rate(cases, judge_call, candidate, baseline) -> float:
         "Randomize/flip order to beat position bias; anchor the rubric to beat verbosity; cross-model + human sampling for self-preference.",
         "Pairwise comparison beats absolute 1–10 scoring for stability; count ties as half.",
         "Any rubric edit re-invalidates the judge — re-measure agreement.",
+        "Decompose holistic rubrics into narrow, anchored, independently checkable criteria — most 'weak judge' problems are actually vague-rubric problems.",
+        "Ensembles reduce single-judge variance but cost linearly more; reserve them for high-stakes single verdicts, and spend budget on more items instead for aggregate trend tracking.",
       ],
     },
   ],
