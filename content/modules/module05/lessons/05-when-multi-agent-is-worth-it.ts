@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson05: Lesson = {
   slug: "when-multi-agent-is-worth-it",
   title: "When Multi-Agent Is Worth It (Usually It Isn't)",
-  minutes: 25,
+  minutes: 35,
   summary:
     "The senior-engineer take interviews reward: multi-agent adds latency, cost, and compounding error rates, and most systems that ship as five agents should have shipped as one good agent. Learn the three legitimate justifications, the math of compounding failure, and how to run the baseline comparison that keeps you honest.",
   sections: [
@@ -116,17 +116,99 @@ def judge(question: str, multi_ans: str, single_ans: str) -> dict:
     else:
         a, b, mapping = single_ans, multi_ans, {"A": "single", "B": "multi"}
     verdict = call_judge_model(JUDGE_PROMPT.format(
-        question=question, a=a, b=b))          # structured output, temp 0
+        question=question, a=a, b=b))          # structured output, JSON schema
     verdict["winner"] = mapping.get(verdict["winner"], "tie")
     return verdict`,
       explanation:
-        'Module 3 habits apply: judges have position bias (randomize order), need a rubric (not "which is better?"), and should run at temperature 0 with structured output. Spot-check a sample of judgments by hand and report your own rubric scores alongside the judge\'s. If the single agent wins, **say so in the README** — an honest negative result is a stronger portfolio signal than a rigged win.',
+        'Module 3 habits apply: judges have position bias (randomize order) and need a rubric (not "which is better?"). Get consistency from the rubric and a strict output schema, not a sampling knob — current frontier Claude models reject `temperature`/`top_p`/`top_k` entirely (Module 1), so "run it at temperature 0" isn\'t available; a narrow, structured rubric is what current models rely on for repeatable judging. Spot-check a sample of judgments by hand and report your own rubric scores alongside the judge\'s. If the single agent wins, **say so in the README** — an honest negative result is a stronger portfolio signal than a rigged win.',
     },
     {
       type: "callout",
       kind: "tip",
       title: "The interview answer",
       text: 'When asked "how would you design a multi-agent system for X?", the senior move is to first ask whether X needs one: "I\'d start with a single agent with good tools and measure it. I\'d split only for context isolation, true parallelism, or distinct permissions — and I\'d keep the single-agent baseline running in my evals so I know the split is paying for its coordination cost." That answer signals judgment; jumping straight to a five-agent diagram signals you read too many vendor blog posts.',
+    },
+    {
+      type: "heading",
+      text: "Cost multiplication, worked",
+    },
+    {
+      type: "paragraph",
+      text: "\"Multi-agent costs more\" is easy to say and easy to underestimate — the multiplier isn't the agent count, it's **agent count × iterations per agent × handoff re-sends**. Take a single agent averaging 8 loop iterations at roughly 3k tokens each: about 24k tokens for the task. Now the five-role research pipeline: planner runs 2 iterations, three parallel searchers run 4 each (12 total), the writer runs 3, the critic runs 2 for one revision cycle — 19 agent-iterations total, which sounds almost comparable to the single agent's 8. It isn't, because each of those iterations pays for **context the single agent never re-sent**: every searcher re-includes its brief and the tools it needs, the writer re-includes every finding, the critic re-includes the plan, the question, and the full draft. The realistic outcome on real workloads is **2–4× the single agent's token cost for the same task**, not 19/8. This is exactly why the baseline harness above sums tokens across *every* call including the orchestrator's — a comparison that only counts \"the interesting agents' \" tokens will always make multi-agent look cheaper than it is.",
+    },
+    {
+      type: "heading",
+      text: "Debugging multiplication",
+    },
+    {
+      type: "paragraph",
+      text: "Cost isn't the only thing that scales with agent count — **debugging surface area does too, and worse than linearly**. A single agent has one loop to trace. A five-node pipeline has five nodes *and* four handoffs, and a wrong final answer could originate at any of those nine places — plus a tenth: the interaction between two of them, where each individually looks correct in isolation (Lesson 4's briefing-bug pattern). Failures also **mask each other**: a planner that silently drops a subtask doesn't look like a bug until three stages later, when the writer's draft is missing a section, and the instinct is to debug the writer — the actual defect is two hops upstream, in a component whose output looked fine because it was never checked against the original question, only consumed as-is by the next node. Multi-agent systems therefore have a non-negotiable observability tax on top of the token tax: every node **and** every handoff needs its own log entry (Lesson 4), because a system you can't fully instrument at N=5 is a system you can't debug at N=5, no matter how good any individual agent's prompt is.",
+    },
+    {
+      type: "heading",
+      text: "Escalate on evidence, not vibes",
+    },
+    {
+      type: "paragraph",
+      text: "The \"Justified when…\" table above tells you the three legitimate reasons; this is the protocol for finding out whether *your* system actually has one of them, instead of pattern-matching an architecture diagram to a vague feeling that \"this task feels like it needs a team.\" Measure the single agent first, on the real workload, before designing a single node of a multi-agent replacement.",
+    },
+    {
+      type: "table",
+      headers: [
+        "Question to measure",
+        "How to measure it",
+        "What justifies escalating",
+      ],
+      rows: [
+        [
+          "Is context actually degrading?",
+          "Plot the single agent's error/quality rate against conversation length or tool-call count on real traces",
+          "Quality drops measurably past some context size — that's context isolation's evidence, not a hunch about 'long contexts are bad'",
+        ],
+        [
+          "Are subtasks actually independent?",
+          "Profile the single agent's tool calls: do later calls depend on earlier results, or could they run with no shared state?",
+          "A real chunk of wall-clock time is spent on calls that don't depend on each other — that's true parallelism's evidence",
+        ],
+        [
+          "Does blast radius actually matter here?",
+          "Ask what the worst-case action is if the model is confused or compromised, and who/what it can currently touch",
+          "The worst case is unacceptable and the tool set can be cleanly partitioned by role — that's the permissions justification's evidence",
+        ],
+        [
+          "None of the above show up",
+          "—",
+          "Ship the single agent. Revisit only when new measurements say otherwise, not when a new pattern trends on social media",
+        ],
+      ],
+    },
+    {
+      type: "exercise",
+      kind: "predict",
+      prompt:
+        "Your baseline comparison returns: single-agent quality 7.8/10, cost $0.04/question, latency 6s. Multi-agent: quality 8.0/10, cost $0.19/question, latency 14s — and your judge's own hand-labeled agreement rate (Module 3's calibration habit) is 90%. The team wants to ship multi-agent because \"the numbers are better.\" What's your call, and what number is missing before anyone can be confident either way?",
+      answer:
+        "Ship the single agent, and say explicitly why the \"the numbers are better\" framing is wrong: the quality delta (8.0 vs. 7.8, a 0.2-point gap) is being read off a judge whose own agreement with human labels is only 90% — a judge that disagrees with a careful human one time in ten has more than enough noise in it to produce a 0.2-point gap on 10 questions with zero real quality difference underneath. That gap has not been shown to be real. The cost and latency deltas, by contrast, are not statistical artifacts — a 4.75× cost multiple and a 2.3× latency multiple are direct measurements of tokens spent and clock time elapsed, not judge opinions, so they're solid ground to make a decision on even with a small sample. The missing number is a **confidence interval or significance test on the quality delta** — bootstrap over more questions, or at minimum run the judge multiple times with order randomized and report the spread, before treating 8.0 vs. 7.8 as a real difference rather than noise. The senior answer to the team: 'we have a real, measured 4–5x cost increase and a quality difference we haven't shown is distinguishable from judge noise — that's not a case for shipping multi-agent, that's a case for either a bigger eval set or staying with the cheaper system.'",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"An exec says: 'let's build an agent team like a real company — a CEO agent managing VP agents.' Push back, in the room, without being condescending.\"",
+      answer:
+        "I wouldn't attack the metaphor directly — I'd redirect it to evidence, because the org-chart instinct usually comes from a real, if vaguely-articulated, frustration with the current system. I'd ask: 'what specifically is the single agent failing at today — is it getting confused on long tasks, is it too slow because things that could run in parallel are running sequentially, or is it doing something risky that a narrower-permissioned agent wouldn't be able to do?' Each answer maps directly onto one of the three legitimate justifications, and if there's a concrete symptom, I now have a scoped, defensible reason to split — 'the researcher role needs a clean context because our traces show quality dropping past 40k tokens' is a sentence I can act on; 'let's build a team' is not. If there's no concrete measured symptom yet, I'd propose spending two weeks instrumenting the current single agent's failures before designing anything, which usually reframes the conversation from architecture-as-aesthetic to architecture-as-consequence-of-data. I keep the tone collaborative — 'let's find out which of these three reasons applies to us' rather than 'multi-agent is a bad idea' — because the exec isn't wrong that something needs to improve, they're just reaching for the org-chart shape before checking whether it's the right shape for *this* failure. **Follow-up probe:** \"it's already decided at the VP level, non-negotiable — now what?\" → I'd constrain the blast radius: ship the smallest possible version (two agents, not five), and instrument the single-agent-vs-multi-agent baseline comparison as part of v1 regardless of whether this decision used one. Even a decision made without evidence can produce evidence for the *next* one — that's the leverage point that's still available.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"How do bugs actually multiply going from one agent to five? Give me the mechanism, not just 'it's harder.'\"",
+      answer:
+        "Three concrete mechanisms, not a vibe. First, **surface area**: a single agent has one loop and one prompt to suspect; five agents have five prompts plus four handoffs, so the number of places a defect can live scales roughly with nodes-plus-edges, not just node count — and Lesson 4 already showed that most of those defects hide in the edges, not the nodes. Second, **masking**: an error introduced early doesn't announce itself where it happens — it gets consumed silently by the next stage, which builds on it without complaint, and only becomes visible several hops later as a symptom that looks like it belongs to whichever stage produced the visibly-bad output, which is almost never where the actual defect is. Third, **combinatorial interaction**: two agents can each behave correctly given their own inputs and still produce a bad outcome together, because the bug is in the boundary — what one agent assumed the brief meant versus what the other agent intended by it — and that class of bug doesn't show up in either agent's unit tests, only in the full chain. All three mean the instrumentation bar is categorically higher, not just 'more logging would be nice': you need a full node-plus-handoff trace to even have a chance of localizing a bug, because you can't unit-test your way out of an interaction defect. **Follow-up probe:** \"so how do you actually start debugging a 5-agent system when the final answer is wrong?\" → Read the handoff log chronologically from the beginning, not backward from the bad output. At each hop, check the *input* that stage received against what the upstream stage's brief promised to send — before judging whether that stage's own output looks reasonable. The defect is almost always at the point where what was promised and what was received disagree, which is Lesson 4's briefing-bug insight applied as a debugging procedure rather than a design principle.",
     },
     {
       type: "keypoints",

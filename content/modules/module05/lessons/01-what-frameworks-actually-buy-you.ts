@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson01: Lesson = {
   slug: "what-frameworks-actually-buy-you",
   title: "What Frameworks Actually Buy You",
-  minutes: 25,
+  minutes: 35,
   summary:
     "You built the loop, memory, retries, and tracing by hand in Modules 1–4. That was the point: now you can evaluate a framework's version of each instead of trusting it blindly. LangGraph's pitch in one sentence: your agent loop, reified as a graph with persistent state.",
   sections: [
@@ -130,6 +130,68 @@ for step in graph.stream({"question": "What is a checkpointer?"},
       kind: "warning",
       title: "The framework tax",
       text: "Abstraction cuts both ways. When a graph misbehaves you're now debugging through the framework's execution engine, not your own 30-line loop. Mitigations: keep nodes small and pure enough to unit-test without the graph; log every state transition; and keep your Module 1 raw-SDK skills sharp — when a framework behavior confuses you, reproduce it with a raw call to see what's actually hitting the API.",
+    },
+    {
+      type: "heading",
+      text: "The abstraction tax, itemized",
+    },
+    {
+      type: "paragraph",
+      text: "\"Framework tax\" isn't one cost — it's four, and a senior engineer names them individually instead of waving at \"complexity.\" **Debugging through layers**: a bug can live in your node, in LangGraph's execution engine, or in the interaction between them, and the stack trace rarely tells you which. **Prompt opacity**: helper methods like structured-output wrappers or message-formatting utilities can append instructions, retries, or reformatting you never wrote — and **you can't fix what you can't see the model receiving**. If you can't produce the exact string of text and images sent to the API for a given call, you are debugging blind. **Lock-in**: your state schema, node signatures, and checkpoint format are now shaped by the framework's conventions; migrating off later means rewriting the graph, not just swapping an import. **Version churn**: the fan-out dispatch API and the interrupt API you'll use in this module have both changed shape across LangGraph versions — code from a six-month-old tutorial may not compile against your installed version.",
+    },
+    {
+      type: "table",
+      headers: ["Tax", "What it costs you", "Mitigation"],
+      rows: [
+        [
+          "Debugging through layers",
+          "A bug can be yours, the framework's, or the interaction — the trace doesn't say which",
+          "Keep nodes as plain, unit-testable functions; reproduce suspicious behavior with a raw SDK call before blaming your prompt",
+        ],
+        [
+          "Prompt opacity",
+          "Can't fix what you can't see the model receiving",
+          "Enable the framework's debug/verbose tracing or callback hooks; if that's not enough, wrap the model client yourself and pass the wrapped client in, so every call funnels through code you control",
+        ],
+        [
+          "Lock-in",
+          "State schema, node signatures, and checkpoint format are framework-shaped; switching later means rewriting the graph",
+          "Keep model-calling and business logic inside plain functions the graph merely calls — the framework should wrap your code, not the other way around",
+        ],
+        [
+          "Version churn",
+          "APIs you depend on (fan-out dispatch, interrupts) change shape across releases",
+          "Pin an exact version in production, read the changelog before upgrading, and keep an integration test that actually compiles and runs the graph — not just unit tests of node functions in isolation",
+        ],
+      ],
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "Your HITL gate has worked in production for months. After a routine `pip install -U langgraph`, the graph raises `TypeError: interrupt_before is not a valid argument to compile()` — and it's caught in production, not CI. What's actually wrong, and what should have caught it earlier?",
+      answer:
+        "The immediate cause: LangGraph's human-in-the-loop surface changed between versions — from a compile-time `interrupt_before=[...]` list to the runtime `interrupt()` / `Command(resume=...)` pair used in this lesson. That's exactly the version churn this section warns about: a \"routine\" upgrade silently broke a load-bearing API. The real bug is upstream of the crash: the dependency was pinned loosely (something like `langgraph>=0.2`) instead of to an exact, deliberately-bumped version, so a `pip install -U` (or an unrelated CI cache rebuild) pulled in a breaking change nobody reviewed. It should have been caught earlier by an integration test that actually **compiles and invokes the graph through its interrupt path** — triggering the gate, checking the graph pauses, resuming it — rather than only unit-testing node functions in isolation, which never touch `compile()` or the interrupt machinery at all. The senior habit: pin exact versions for anything with a checkpoint format or interrupt contract, treat a framework upgrade as a change with its own changelog review and test run, and keep one end-to-end test per structurally load-bearing feature (checkpointing, interrupts, fan-out) so a breaking API change fails a build instead of a production request.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Convince me frameworks aren't just resume-padding — when do you actually reach for LangGraph over a hand-rolled loop?\"",
+      answer:
+        "Name concrete triggers, not vibes. I reach for a framework when I need **durable resumability**: a job that must survive a process restart without re-paying for completed work, which means checkpointing keyed by thread ID, not a homegrown pickle-to-disk hack. I reach for it when I need **human-in-the-loop that spans days and processes**: the approval might come from a web request or a Slack bot hours later, and blocking on `input()` doesn't survive that. I reach for it when I need **dynamic fan-out with merge semantics**: N parallel workers whose results need to accumulate into shared state safely, which is exactly what reducers exist for. And I reach for it for the **trace/tooling ecosystem** — streaming per-node updates and callback integrations I'd otherwise build myself. What I don't do is reach for it to avoid writing a 40-line while-loop, or because a blog post said agents need graphs — that's buying lock-in and debugging-through-layers for nothing. The honest framing: a framework is worth its abstraction tax exactly when its checkpointer's guarantees are requirements, not nice-to-haves. **Follow-up probe:** \"your team says 'let's just use LangGraph everywhere so junior engineers ramp faster' — good reason?\" → Ramp speed is real but secondary, and it's backwards if the team doesn't already understand the raw loop: they'll misdiagnose a prompt bug or a tool-calling bug as \"a LangGraph problem\" and go spelunking in the framework's source instead of their own prompt. Teach the hand-rolled loop first — this course's whole structure — then hand them the framework as an accelerant, not a substitute for understanding.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"What is 'prompt opacity,' concretely, and how would you defeat it against a framework you don't control?\"",
+      answer:
+        "Prompt opacity is the gap between the plain-English prompt you wrote and the literal bytes that hit the model API — a framework's structured-output helper, message-formatting utility, or auto-injected tool-use instructions can silently reshape, reorder, or append to what you authored. The risk isn't hypothetical: a formatting helper that adds a few-shot example or a schema-repair instruction changes token cost, changes what the model attends to, and is invisible in your source code — you're debugging a prompt you've never actually read. To defeat it: first, turn on the framework's own debug/verbose mode or callback/tracing hooks, which usually expose the raw request LangChain or LangGraph constructs. If that's insufficient — some wrapping happens below the level any callback fires — intercept at the HTTP client layer (an `httpx` event hook, or a mitmproxy-style capture in a dev environment) so you see the literal JSON body leaving the process. The most robust fix, and the one I'd build into a serious system from day one: construct your own thin client wrapper around the model SDK and inject *that* into the framework wherever it accepts a custom client or callback — every call funnels through code you own, so you always have the exact prompt on hand, in production, not just in a debug session. **Follow-up probe:** \"why not just trust the framework's docs about what it sends?\" → Docs describe intended behavior at doc-publish time; version churn (this lesson's other axis) means the actual behavior of your pinned version can drift from the docs before anyone updates either. Verify against the wire, not the README.",
     },
     {
       type: "keypoints",
