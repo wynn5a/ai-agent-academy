@@ -57,7 +57,7 @@ def run_session(task: str):
     while True:
         messages = maybe_compact(messages, system)     # 75% threshold
         resp = call_with_retries(lambda: client.messages.create(
-            model="claude-sonnet-4-5", max_tokens=1024,
+            model="claude-sonnet-5", max_tokens=1024,
             system=system, tools=SCHEMAS, messages=messages))
         # ... Lab 02 tool loop unchanged ...
         if resp.stop_reason != "tool_use":
