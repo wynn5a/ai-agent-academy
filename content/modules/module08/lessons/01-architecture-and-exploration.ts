@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson01: Lesson = {
   slug: "architecture-and-exploration",
   title: "Architecture & Codebase Exploration",
-  minutes: 30,
+  minutes: 40,
   summary:
     "The capstone is the sum of every prior module: the agent loop from Lab 02, RAG-style retrieval, memory, evals, tracing, and HITL. First the architecture and scope; then the hardest sub-problem — finding the few relevant files in a repo far too large for the context window.",
   sections: [
@@ -128,6 +128,20 @@ def read_file(rel: str, start: int = 1, end: int = 400) -> str:
         "These three tools — search, list, read — are enough for an agent to navigate a repo like an engineer: grep an error string, list the module it points to, read the function, follow the call site. Two safety essentials: every path is resolved and constrained to the repo (no filesystem escape), and reads are windowed so a huge file can't blow the context budget. Return errors as strings so the model can recover, per the Module 1 convention.",
     },
     {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A teammate reviews `list_dir` / `read_file` and 'simplifies' the containment check to a plain string comparison, arguing `pathlib` is overkill for a sandbox that never sees untrusted input:",
+      code: `def list_dir(rel: str = ".") -> str:
+    target = str((REPO / rel).resolve())
+    if not target.startswith(str(REPO)):
+        return "error: path escapes the repo"
+    ...`,
+      language: "python",
+      answer:
+        "String-prefix containment is a classic near-miss for path traversal. `startswith` treats `/sandbox/repo` and `/sandbox/repo-internal-secrets` as related, because the string `/sandbox/repo-internal-secrets` literally starts with the characters `/sandbox/repo`. Any sibling directory whose name happens to share that prefix — `repo2`, `repo-backup`, `repo-old` — passes the check and hands the agent read/list access outside the sandbox. This isn't hypothetical for coding-agent setups: CI runners routinely check out multiple repos side by side, or keep a `-bak`/`-old` copy next to the working tree, for exactly this reason. The correct check compares path *objects*, not string prefixes: `REPO in target.parents or target == REPO` (the original tools) walks the resolved parent chain, so `/sandbox/repo-internal-secrets` is never in `/sandbox/repo`'s parent chain no matter how similar the string looks. The general rule: **never validate a filesystem boundary with string operations** — resolve to a real path first (collapsing `..` and symlinks) and compare structurally. The same bug class shows up in web-app path-traversal checks and container mount validation; it's worth having memorized cold.",
+    },
+    {
       type: "code",
       language: "python",
       title: "the exploration loop producing a checkpointed plan",
@@ -165,6 +179,57 @@ def explore_and_plan(issue_text: str) -> dict:
         messages.append({"role": "user", "content": results})`,
       explanation:
         "The plan is a forced structured output (record_plan is a tool schema, per Module 1) so downstream stages get a typed object, not prose. Persisting it to disk is the checkpoint the README requires: exploration is the expensive part, and a crash during implementation should resume from the plan rather than re-explore. The system prompt's 'do NOT guess, read them' instruction is load-bearing — hallucinated file contents are a top failure mode for coding agents.",
+    },
+    {
+      type: "heading",
+      text: "Why on-demand search wins in practice",
+    },
+    {
+      type: "paragraph",
+      text: "It's tempting to reach for infrastructure: chunk the repo once, embed it, keep a semantic index warm, and query it like RAG. In production coding agents this mostly lost to on-demand agentic search (grep/glob/read), for reasons that generalize past this capstone. **Freshness:** a repo changes every commit; an index is stale the moment someone merges, and staleness in code search is worse than in prose — a stale hit sends the agent to code that no longer exists. Keeping an index current means a background re-embed job, versioning, and a new class of bugs ('index says line 40, file says line 55'). On-demand search reads the live working tree, so it's correct by construction. **Infrastructure cost:** an index is a service — storage, an embedding pipeline, a latency budget, a thing that pages someone at 3am. `rg` is a binary that ships with the OS. For a tool a single engineer or a CI job runs, the infra tax often costs more than it saves. **Model capability:** frontier models got good enough at iterative, targeted search — grep an error string, read the hit, follow the import — that the coordination overhead of maintaining an index stopped paying for itself for exactly this workload: symbol- and error-string-level bug hunts, not broad conceptual questions.",
+    },
+    {
+      type: "table",
+      headers: ["Approach", "Freshness", "Infra cost", "Best fit"],
+      rows: [
+        [
+          "On-demand grep/glob/read",
+          "Always current — reads the live tree",
+          "None — ships with the OS",
+          "Most repos; symbol- and error-string-level bug hunts (this capstone)",
+        ],
+        [
+          "Pre-built semantic index",
+          "Stale until re-embedded",
+          "Embedding pipeline + storage + re-index jobs",
+          "Very large/monorepo scale, or cross-repo conceptual search",
+        ],
+      ],
+    },
+    {
+      type: "callout",
+      kind: "insight",
+      text: "The honest caveat: at a scale most companies never reach — multi-million-LOC monorepos — a maintained index earns its keep, because even agentic grep chokes on result volume. Pick the retrieval strategy for the repo size and change frequency you actually have, not the one that sounds more sophisticated.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Your grep-and-read exploration works great on a 10k-LOC repo. Now point it at a 2M-LOC monorepo with 40 services — `search_symbol` for a common name returns thousands of hits. What changes?\"",
+      answer:
+        "Treat exploration itself as a bounded, staged search, not a single flat grep. **Narrow before you search:** use issue metadata — a stack trace, a file path in the repro steps, the service named in the ticket — to scope to one service directory before grepping anything; `list_dir` at the service level first, grep within scope second. **Rank and cap results explicitly:** cut `max_results` hard and prefer matches in source over generated/vendor paths (heuristics: skip `node_modules/`, `vendor/`, `dist/`, `*.min.*`), since undifferentiated hit volume is worse than no hits — the model wastes turns skimming junk. **Escalate only past a threshold:** this is where the earlier trade-off flips — if narrowing plus ranking still returns unusable volume, that's the signal a lightweight per-service index (or even a coarse file-level embedding pass) starts earning its keep, so build the escalation as a measured trigger, not a default. **Bound the exploration loop itself:** more services means more plausible-looking dead ends, so cap exploration iterations and cost the same way Module 2 caps the repair loop — a monorepo doesn't get an exemption from termination discipline just because it's bigger. **Follow-up probe:** \"the issue gives no service hint at all\" → then the first move is a cheap classification step — ask a small/cheap model call to guess the likely service from the issue text and repo's top-level directory names — before spending real exploration budget; misrouting the search is cheaper to fix early than to discover after 30 unproductive grep calls.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Walk me through what happens end-to-end when your `read_file` tool is asked to read a 50,000-line generated file — a lockfile or a minified bundle.\"",
+      answer:
+        "Windowing alone isn't the fix — it's a partial mitigation for the wrong problem. `read_file(start=1, end=400)` happily returns 400 lines of a lockfile's alphabetized package hashes, which costs real context tokens and returns zero signal; the model has to spend a turn reading it, decide it's useless, and try again. The actual fix is upstream: detect generated/vendored files *before* reading them and refuse or redirect — heuristics like path prefixes (`vendor/`, `node_modules/`, `dist/`, `.lock` extensions, `.min.js`), a 'longest line' check (minified code has absurd line lengths), or a leading auto-generated-file banner comment. Return `\"error: <path> looks generated/vendored — search for the specific symbol you need instead of reading the whole file\"` rather than truncated content, which nudges the model back toward `search_symbol`. This is the same discipline Module 2 teaches for termination budgets: iterations aren't the resource, tokens are, and a single bad read can burn as much context as ten good ones. **Follow-up probe:** \"what if the actual bug genuinely lives inside a generated or vendored file?\" → then don't read the whole thing at all — grep for the specific symbol or error string inside it first, and read only a tight windowed region around the hit; the file being large and machine-authored doesn't change the retrieval discipline, it just makes skipping the naive full read more important.",
     },
     {
       type: "keypoints",

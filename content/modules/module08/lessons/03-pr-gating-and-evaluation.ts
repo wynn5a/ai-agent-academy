@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson03: Lesson = {
   slug: "pr-gating-and-evaluation",
   title: "PR Etiquette, HITL Gating & Evaluating a Coding Agent",
-  minutes: 30,
+  minutes: 40,
   summary:
     "A green test suite isn't a merge. The agent produces a well-formed PR gated on human approval, then you measure whether the whole thing actually works — a small SWE-bench-style eval set you assemble yourself, with a partial-success taxonomy and cost/time per issue.",
   sections: [
@@ -62,6 +62,49 @@ def open_pr_if_approved(repo_full: str, branch: str, base: str,
     return pr.html_url`,
       explanation:
         "The gate is the whole point: the human sees title, body, cost, and a trimmed diff, and only an explicit 'y' reaches `create_pull` — opened as a draft. Every path writes to the audit log, so there's a durable record of what the agent proposed and what a human decided. In a team setting the `input()` becomes a web approval UI, but the contract is identical: propose with full context, execute only on approval.",
+    },
+    {
+      type: "heading",
+      text: "Why small, reviewable diffs beat big ones",
+    },
+    {
+      type: "paragraph",
+      text: "The 'small, focused diffs' bullet above is more than style — it's what makes the entire gate structure work. **Reviewer trust:** a human approver skimming a 15-line diff can genuinely verify it inside the seconds an HITL gate is designed to take; a 400-line diff gets rubber-stamped under the same time pressure, which defeats the gate's entire purpose — the approval becomes theater instead of a real check. **Bisectability:** `git bisect` and `git blame` stay useful only if each commit does one thing; a diff that fixes the bug *and* reformats three files *and* renames a variable makes future debugging archaeology harder, including your own agent's future regression-hunting. **The PR as the unit of accountability:** one issue, one fix, one clear description creates a clean audit trail — this PR closes this issue, this test proves it. A bundled diff obscures which change caused which effect, which matters enormously when a *later* PR from the same agent introduces a regression and you need to know which prior change is implicated. This is why Lesson 2's 'default to search/replace' choice isn't just an implementation detail — it's the thing that makes the diffs small enough for this gate to mean anything.",
+    },
+    {
+      type: "heading",
+      text: "Layered gates: from fast fail to human",
+    },
+    {
+      type: "paragraph",
+      text: "The HITL approval isn't the only gate — it's the last and most expensive one in a sequence that should fail fast and cheap before it fails slow and human. **Lint/typecheck** first: seconds, catches syntax and type errors before you ever burn a full test-suite run. **The test suite** next: the red→green proof from Lesson 2. **Agent self-review vs. an independent review model**: never let the model that wrote the fix be its only reviewer — the same self-preference bias Module 3 names for LLM judges applies here (a model rates its own family's output more favorably), so route the diff through a different model, or at minimum a fresh context with a narrow rubric, before a human ever sees it. **Human approval** is the final gate precisely because it's the only one that's adversarially robust — every earlier layer is itself a model or a script that can, in principle, be fooled by the same class of failure the pipeline exists to catch.",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "an independent review pass before the human ever sees the diff",
+      code: `import json
+
+def independent_review(diff: str, issue_text: str) -> dict:
+    """A DIFFERENT model/context reviews the diff before a human does.
+    Never let the model that wrote the fix be the only reviewer of it."""
+    resp = reviewer_client.messages.create(
+        model="claude-sonnet-5", max_tokens=1024,
+        system=(
+            "You are reviewing a code change, not the engineer who wrote it. "
+            "Check: does the diff plausibly fix the described issue? Does it "
+            "touch any file under tests/ or named test_*/*_test? Is the diff "
+            "larger than the issue seems to warrant? Respond as JSON: "
+            '{"touches_tests": bool, "scope_concern": bool, '
+            '"verdict": "pass" | "flag"}.'
+        ),
+        messages=[{"role": "user", "content":
+            f"Issue:\\n{issue_text}\\n\\nDiff:\\n{diff}"}],
+    )
+    text = next(b.text for b in resp.content if b.type == "text")
+    return json.loads(text)`,
+      explanation:
+        "The rubric is deliberately narrow and mechanical (touches_tests, scope_concern, verdict) rather than an open 'is this good?' — narrow, structured checks resist the position and self-preference biases Module 3 covers better than holistic judgments do. `touches_tests` is exactly the guardrail Lesson 2 promised against test-gaming: any repair that edits a test file gets flagged for elevated scrutiny automatically, before the human's limited attention is spent on it. This call is cheap triage, not certification — it exists so the HITL gate only ever sees diffs that already cleared automated review, not to replace the human's judgment.",
     },
     {
       type: "heading",
@@ -165,13 +208,52 @@ def report(results: list[IssueResult]) -> dict:
       text: "Report median (and worst-case) cost per issue and per outcome — successes are often cheaper than exhausted runs that retried five times. Break cost down by stage (exploration vs. repair) using your traces from Module 7; usually exploration or a runaway repair loop dominates. 'Median $X per successful fix, exhausted runs cost ~3x' is a sentence that lands in an interview.",
     },
     {
+      type: "heading",
+      text: "What SWE-bench-style numbers do and don't tell you",
+    },
+    {
+      type: "paragraph",
+      text: "Your own eval set borrows SWE-bench's shape, so it's worth knowing exactly where that shape misleads. **Pass@1 vs. pass@k:** pass@1 asks whether a single attempt succeeds; pass@k asks whether *at least one* of k independent attempts succeeds — pass@k is mechanically ≥ pass@1 for k>1, because more independent chances can only help. A number reported as 'resolved' without specifying which one is comparing apples to a fruit basket; production is almost always pass@1, since a user's PR gets opened from exactly one attempt. **Env-setup brittleness:** a meaningful share of historical SWE-bench failures turned out to be the *harness* failing to reproduce a repo's environment, not the model failing to fix the bug — a low score can mean 'our setup is fragile,' not 'the model is weak,' and conflating the two misdirects your debugging effort. **Benchmark contamination:** frontier models may have seen SWE-bench instances or their fixes during training, inflating published scores in ways that don't transfer to your own private, freshly-seeded issue set — which is exactly why you built one instead of just quoting the public number. **The gap to real repo work:** benchmarks select for issues with a clean reproducible test and unambiguous ground truth; real repos have flaky CI, tribal knowledge nowhere in the docs, and issues that are underspecified until someone asks a clarifying question. A benchmark number is a ceiling estimate on real work, not a guarantee of it.",
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A teammate's slide says: 'Our agent matches published SWE-bench-verified numbers: 65% resolved.' The published figure is pass@1 on the full SWE-bench-verified set. Your team's number comes from running your own agent 5 times per issue on your own 10-issue set and counting an issue as resolved if ANY of the 5 attempts passed. What's wrong with the comparison, and what should the slide say instead?",
+      answer:
+        "Two separate mismatches compound, both inflating the comparison. First, **pass@k vs. pass@1**: 'resolved in at least one of 5 attempts' is pass@5, not pass@1 — pass@5 is mechanically ≥ pass@1 because you get five independent chances and only need one hit, so it isn't comparable to a published pass@1 figure without either computing your own pass@1 (single attempt per issue) or finding the paper's pass@5 number, if reported, to compare like-for-like. In production a user's PR is opened from exactly one attempt, so pass@1 is almost always the operationally honest number to lead with. Second, **sample size and distribution**: 10 self-assembled issues is a completely different statistical regime and composition (real + seeded, one language, one size band) than 500 curated SWE-bench-verified instances — a 6/10 rounds to a suspiciously precise-looking 60%. The corrected slide line: **'6/10 (pass@1) on our own seeded + real issue set — not directly comparable to published SWE-bench numbers.'** Passing off a pass@5 number on a 10-issue set as 'matching' a pass@1 benchmark on 500 issues is exactly the kind of inflation a limitations doc (next lesson) exists to prevent.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Walk me through every gate a change goes through between your agent finishing a fix and that fix landing on main — and tell me which ones a determined agent could talk its way past.\"",
+      answer:
+        "Narrate the layers in order and, for each, name what a misaligned or gamed agent could still slip through. **Lint/typecheck** catches nothing semantic — a plausible-looking but wrong fix sails through. **The test suite** can itself be gamed (Lesson 2's test-gaming) unless something specifically diffs test files rather than trusting the green checkmark. **An independent-review model** helps, but if it shares the generator's family it inherits some self-preference bias — the same failure Module 3 names for LLM judges — and a sufficiently plausible, well-worded PR description can talk past a holistic 'does this look right?' rubric; narrow, mechanical checks (touches_tests, diff-size-vs-issue-size) resist this better than open judgment calls. **Human approval** is the only gate that's actually adversarially robust, because it's the only layer that isn't itself another model reasoning about text that could, in principle, be crafted to fool it. The design principle to state explicitly: automate everything you can verify mechanically, and reserve human attention for the judgment calls that remain after the mechanical checks pass — that's what keeps the human gate meaningful instead of a rubber stamp under time pressure. **Follow-up probe:** \"what if the human just clicks approve without reading?\" → then the gate is theater regardless of how good the upstream layers are; the fix is a UI that forces a genuine look (diff and cost surfaced prominently, timeout defaults to reject not approve) and a periodic sample-audit of approvals after the fact to catch rubber-stamping before it becomes routine.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"You add a second LLM as an independent reviewer before human approval. It's the same model family as the one that wrote the fix. Good enough? What would you change?\"",
+      answer:
+        "Not good enough, and the reason is the exact judge-bias material from Module 3: a reviewer from the same model family, even in a fresh context with no shared memory, tends to rate outputs from its own family more favorably — similar training data, similar blind spots, similar failure modes it doesn't recognize as failures because it wouldn't have flagged them in its own output either. The fix isn't necessarily 'use a bigger model' — it's **de-bias by construction**: prefer a different model family for review when feasible, and regardless of family, replace open-ended judgment ('is this good?') with a narrow, structured rubric (does the diff touch tests/, is its size proportionate to the issue, does the description match the diff) — narrow checks resist bias better than holistic ones for the same reason Module 3's judge calibration teaches: vague rubrics produce incoherent, exploitable scores. Calibrate it the same way, too: hand-label a set of good/bad diffs, measure the reviewer's agreement with your labels, and treat disagreements as evidence to fix the rubric rather than trusting the dashboard. Frame it correctly for the interviewer: the independent reviewer is a cheap pre-filter that keeps obviously bad diffs from wasting the human's limited attention, not a replacement for the human gate or a certification of correctness. **Follow-up probe:** \"budget won't allow a second model call on every PR\" → don't review everything equally — reserve the independent-review call for diffs that trip a cheap heuristic first (touches tests/, diff size above a threshold, low confidence signal from the repair loop), so the extra spend concentrates where the risk actually is.",
+    },
+    {
       type: "keypoints",
       points: [
         "Green tests earn a PR proposal, not a merge; open a draft with a reviewer-ready description linking the issue.",
         "Opening a PR is an irreversible action — gate it with HITL showing diff, test results, and cost; log the decision; fail closed on timeout.",
+        "Small diffs aren't just style: they're what makes reviewer trust, bisectability, and PR-as-accountability-unit actually work.",
+        "Layer the gates cheap-to-expensive: lint/typecheck → tests → independent review (different model family, narrow rubric — beware self-preference bias) → human approval as the only adversarially robust layer.",
         "Build your own small SWE-bench-style set (≥10 issues, real + seeded) with known ground truth to score automatically.",
         "Report success rate AND a partial-success taxonomy (wrong location, fix-without-test, regression, exhausted).",
         "Report median/worst cost and time per issue, broken down by stage using your traces.",
+        "Know SWE-bench's limits: pass@1 vs pass@k are not interchangeable, env-setup brittleness and contamination inflate published numbers, and a benchmark score is a ceiling estimate on real repo work, not a guarantee.",
         "Naming failure categories turns numbers into insight and into interview vocabulary.",
       ],
     },
