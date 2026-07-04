@@ -151,4 +151,69 @@ export const quiz06: QuizQuestion[] = [
     explanation:
       "Default-false confirm makes hallucinated or injected destructive calls inert: the worst a spurious call produces is a preview. The docstring teaches the ceremony; host-side human approval is a valuable second layer, but your server shouldn't assume every host provides it. Defense in depth, starting with the layer you control.",
   },
+  {
+    question:
+      "Your team just adopted MCP for a new agent product. A skeptical engineer says 'great, now our tools are automatically good, our context usage is handled, and third-party servers are safe to connect.' What's wrong with that claim?",
+    options: [
+      "Nothing — standardizing the wire is exactly what guarantees tool quality, context economy, and server safety",
+      "MCP standardizes the wire only: it says nothing about whether a tool is well-designed, how much context every connected server's schemas consume, or whether a given server's code and output can be trusted — each is a separate problem you still have to solve (Lessons 4 and 5)",
+      "MCP guarantees tool quality and context economy, but never addresses server trust",
+      "MCP guarantees server trust via mandatory code review, but never addresses tool quality",
+    ],
+    correct: 1,
+    explanation:
+      "Standardization is a claim about wire compatibility, not about safety or quality. A protocol-compliant server can still expose a badly-designed tool with a bloated response, and connecting to it is exactly as risky as running that party's code, because that's what you're doing. Treating 'we use MCP' as a safety statement is the mistake this question is checking for.",
+  },
+  {
+    question:
+      "You connect five MCP servers averaging eight tools each, and the agent's tool selection gets measurably worse — even though every individual tool is well-designed. What's happening, and what's the fix?",
+    options: [
+      "The servers are competing for network bandwidth; fix it by upgrading your connection",
+      "Every connected server's full tool schemas ride in every request regardless of relevance, and selection accuracy degrades as the visible tool count grows; fix it with deferred loading / a tool-search capability (or manual curation of which servers are connected) rather than editing any single tool's docstring",
+      "MCP enforces a hard 20-tool limit per host, so five servers of eight tools each is simply invalid and must be reduced",
+      "The fix is always to merge all five servers' tools into one mega-tool",
+    ],
+    correct: 1,
+    explanation:
+      "This is context bloat: forty schemas' worth of tokens ride in every request whether or not they're relevant, and tool-selection accuracy drops as the count grows, independent of any single tool's quality. Deferred loading / tool search lets the model discover and load only task-relevant schemas; without that capability, curating which servers are connected per session is the manual equivalent. Rewriting one tool's description doesn't fix a volume problem.",
+  },
+  {
+    question:
+      "What is the 'confused deputy' problem as it applies to an MCP server, and why does it matter even if every user of your agent is fully trusted?",
+    options: [
+      "It's when two servers both claim the same tool name; the client can't tell which one to call",
+      "A program (the server) holds more authority than the party asking it to act (the model); if untrusted content in the model's context manipulates the model into issuing a tool call, the server executes it with its own full credential because it can't distinguish a genuine user request from a manipulated one — so the risk exists independent of user trust",
+      "It only matters when the user is malicious, since a trusted user would never trigger a harmful tool call",
+      "It's a client-side bug where the wrong session ID gets attached to a tool call",
+    ],
+    correct: 1,
+    explanation:
+      "The server holds real authority (its API credential); the model has none of its own and acts entirely through the server's authority when it calls a tool. If a ticket, web page, or other content in context is engineered to redirect the model, the server sees an identical, well-formed tools/call either way — it can't tell 'the user asked for this' from 'the model was manipulated.' That's why minimal scoping and two-phase confirm matter regardless of how trustworthy the user is.",
+  },
+  {
+    question:
+      "What is the 'lethal trifecta,' and why does a well-connected MCP host assemble it easily?",
+    options: [
+      "Three unrelated bugs — a race condition, a memory leak, and a null pointer — that together crash the server",
+      "An agent that has (1) access to private/sensitive data, (2) exposure to untrusted content such as fetched web pages or tickets, and (3) a channel that can exfiltrate or act on that data — a host with a filesystem server, a web-fetch server, and a write-capable API server live in the same session assembles all three legs without anyone deciding to",
+      "Three transport protocols (stdio, SSE, streamable HTTP) running simultaneously, which the spec forbids",
+      "Three servers sharing one OAuth token, which always triggers a security review",
+    ],
+    correct: 1,
+    explanation:
+      "Private data + untrusted content + an exfiltration/action channel, together in one session, is what turns injected text into real damage — none of the three legs is a problem alone. Mitigations layer: minimize tools that both read untrusted content and act with consequence in the same session, treat every tool result and resource as untrusted input, and gate destructive/write tools behind two-phase confirm so an injected instruction produces a preview, not an action.",
+  },
+  {
+    question:
+      "Why is connecting to a third-party MCP server a different — and larger — risk than adding a typical third-party library dependency?",
+    options: [
+      "It isn't different; both are just code you didn't write, and the same review process covers both identically",
+      "A malicious or compromised MCP server is simultaneously arbitrary code execution (like any dependency) AND a trusted voice inside the model's context — its descriptions shape what the model decides to call and its responses shape what the model does next — so even a server whose code stays clean can start injecting the model via a compromised upstream data source",
+      "Third-party MCP servers cannot hold credentials, so the worst case is limited to reading public data",
+      "MCP servers are sandboxed by the protocol itself, so code risk is eliminated; only the library-dependency case carries code risk",
+    ],
+    correct: 1,
+    explanation:
+      "A library dependency doesn't get to inject instructions into your model's reasoning; an MCP server's tool descriptions and results do, with the same trust as your own system prompt. Vet a third-party server like a production dependency (source, maintenance, least-privileged credentials) — and separately treat everything it returns as untrusted input, because a legitimate server can be compromised upstream and start returning injected content without its published source ever changing.",
+  },
 ];
