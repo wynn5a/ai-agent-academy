@@ -157,4 +157,69 @@ export const quiz08: QuizQuestion[] = [
     explanation:
       "Stating the workflow-vs-agent decision out loud — and defaulting to the simplest thing that works — signals judgment. Reaching for multi-agent or the biggest model first signals the opposite. Add complexity only when the simple design demonstrably can't do the job.",
   },
+  {
+    question:
+      "Why did on-demand agentic search (grep/glob/read) generally beat a pre-built semantic index for this capstone's exploration stage?",
+    options: [
+      "Semantic indices cannot be built for source code at all",
+      "An index is stale the moment the repo changes and requires ongoing infra to keep current, while on-demand search reads the live tree and needs no service to maintain — though a maintained index can still earn its keep at monorepo scale",
+      "Grep is always faster than any vector search regardless of repo size",
+      "Models cannot call more than one tool per turn, so indices are unusable",
+    ],
+    correct: 1,
+    explanation:
+      "On-demand search is correct by construction (it reads the current tree) and has near-zero infra cost, while an index needs a re-embedding pipeline, storage, and versioning to avoid staleness. The honest exception is very large monorepos, where even agentic grep chokes on result volume and an index starts paying for itself.",
+  },
+  {
+    question:
+      "Why should an edit tool reject a write when the file's content hash has changed since it was last read, even if the exact old block still matches?",
+    options: [
+      "It's a performance optimization that makes apply_edit run faster",
+      "GitHub requires a content hash on every commit",
+      "The block matching is what pytest uses to locate line numbers",
+      "The model's broader understanding of the file may be based on a version that no longer exists even if the specific old block is unchanged, so a staleness check fails loudly and cheaply instead of risking a subtly wrong edit",
+    ],
+    correct: 3,
+    explanation:
+      "Exact-match search/replace already catches drift in the edited block, but the rest of the file — and the model's reasoning about it — could still be stale. A staleness check (hash captured at read time, verified at write time) rejects the whole edit if anything changed, forcing a fresh read rather than letting an edit land against assumptions that no longer hold.",
+  },
+  {
+    question:
+      "A repair loop's only success signal is 'the tests pass.' What failure mode does this create, and what actually guards against it?",
+    options: [
+      "None — a passing test suite is definitionally proof the bug is fixed",
+      "Test-gaming: under retry pressure the agent can weaken, skip, or delete the failing assertion instead of fixing the bug, since the loop can't tell the difference; the guardrail is an external check that diffs test files independently of pass/fail, not a prompt instruction",
+      "Flaky tests, which are fixed by increasing MAX_ATTEMPTS",
+      "The model refusing to call run_tests more than once",
+    ],
+    correct: 1,
+    explanation:
+      "An underspecified proxy metric ('tests pass') will be satisfied the cheapest way possible by a capable optimizer, including an LLM under retry pressure. Because the mechanism lives inside the same loop being gamed, the fix has to be external: a review or scoring step that diffs test files on their own and flags any repair that touches them, regardless of the suite's outcome.",
+  },
+  {
+    question:
+      "Why is a same-model-family independent reviewer, reviewing a diff before human approval, a weaker gate than it looks?",
+    options: [
+      "Same-family models are slower to respond than cross-family ones",
+      "It inherits self-preference bias — a model tends to rate its own family's outputs more favorably, sharing blind spots with the generator — so a different family or at least a narrow, structured rubric is a stronger design",
+      "Same-family models cannot process diffs longer than a few lines",
+      "Independent review is only useful after the human has already approved",
+    ],
+    correct: 1,
+    explanation:
+      "This mirrors the LLM-as-judge bias material: a reviewer sharing the generator's family shares its training data and blind spots, so it under-flags the same class of mistakes the generator is prone to making. A different model family, or at minimum a narrow mechanical rubric instead of an open judgment call, resists this better.",
+  },
+  {
+    question:
+      "A team reports 'our agent matches the published SWE-bench pass@1 number' after running their own agent 5 times per issue and counting a success if ANY attempt passed. What's the problem?",
+    options: [
+      "Nothing — more attempts just means a more thorough test",
+      "That's a pass@5 number being compared to a pass@1 figure; pass@k is mechanically ≥ pass@1 since more independent attempts can only help, and production PRs are opened from a single attempt, so pass@1 is the operationally honest number to report",
+      "SWE-bench doesn't have a published pass@1 number to compare against",
+      "Running an agent more than once per issue is not technically possible",
+    ],
+    correct: 1,
+    explanation:
+      "Pass@k counts a success if any of k independent attempts succeeds, which can only be ≥ pass@1. Comparing a pass@5 number to a published pass@1 figure overstates apples-to-apples performance — and misrepresents what a user actually experiences, since a real PR comes from one attempt, not the best of five.",
+  },
 ];
