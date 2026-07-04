@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson03: Lesson = {
   slug: "checkpoints-resume-and-hitl",
   title: "Checkpoints, Resume & Human-in-the-Loop",
-  minutes: 25,
+  minutes: 35,
   summary:
     "The checkpointer persists graph state after every step, keyed by thread ID. That one mechanism gives you crash recovery, time-travel debugging, and — combined with interrupts — humans who can approve or reject an agent's work days after the process exited.",
   sections: [
@@ -94,6 +94,54 @@ graph.invoke(
       kind: "warning",
       title: "Don't ship MemorySaver",
       text: '`MemorySaver` holds checkpoints in the Python process — it demonstrates the API but provides zero durability. Lab 05\'s acceptance criterion is literally "kill the process, resume": that requires the SQLite (single machine) or Postgres (production) checkpointer. Also budget for storage: checkpointing full state every step for every thread adds up — durable checkpointers need a retention/cleanup policy in real deployments.',
+    },
+    {
+      type: "heading",
+      text: "What's actually in a checkpoint, and the exactly-once trap",
+    },
+    {
+      type: "paragraph",
+      text: "\"The checkpointer persists state\" undersells what has to be captured for resume to actually work. A checkpoint isn't just your `TypedDict` — it's the **full state values, plus which node(s) are next** (`snapshot.next`), plus, in a graph paused mid-fan-out, bookkeeping about which parallel branches have and haven't completed. Miss any of that and resume silently does the wrong thing: a naive reimplementation that serializes only your business fields (`plan`, `findings`, `draft`) and forgets the \"which node is pending\" bookkeeping has no way to know whether it should re-run the writer or re-dispatch three searchers — it can restore your data without being able to restore your **position in the graph**. That's precisely why you use the framework's checkpointer rather than rolling your own state dump: the hard part was never the JSON serialization.",
+    },
+    {
+      type: "paragraph",
+      text: "The sharper problem is what happens when a node performs a **side effect on the outside world** — sending an email, charging a card, filing a ticket — and the process dies after that side effect fires but before the checkpoint recording \"this node finished\" is durably written. On resume, the node re-runs from its top (the same subtlety already flagged for interrupts), which means the side effect can fire **twice**. This is exactly Module 1's idempotency lesson, one layer up: there, a retried tool call risked double-charging a customer; here, a *resumed graph* risks the same thing, and the fix is the same shape — a **stable idempotency key** (derived from `thread_id` + node name + a business key, not from anything that changes between the two attempts) that the downstream system dedupes on. Two structural habits make this tractable: keep side-effecting work in its own single-purpose node that does as little else as possible, so \"the node re-runs\" means \"the one guarded side effect is re-attempted,\" not \"a chain of unrelated work re-executes too\"; and remember that LangGraph checkpoints after every node execution, so the smaller that node's blast radius, the smaller your redo window.",
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A `send_approval_email` node calls the mail API, then updates a `notified: True` state field, then returns. The pod is OOM-killed one line after the mail API call succeeds — before the state update and before the checkpoint write complete. The orchestrator restarts and resumes the same `thread_id`. What happens, and how should the node have been structured to prevent it?",
+      answer:
+        "Because the checkpoint from *before* this node ran is the last durable one, resume re-executes `send_approval_email` from its top — the framework has no record that the mail API call already succeeded, because that fact never made it into a checkpoint. The email goes out a second time. This is the exactly-once trap: **the side effect and the checkpoint are not atomic with each other**, and no amount of \"the framework handles persistence\" changes that, because the side effect happens outside the framework's transaction boundary entirely. The structural fix: give the send call a stable idempotency key — derived from `thread_id` plus a fixed string like `\"approval-email\"`, not from a timestamp or random UUID generated inside the node, since that would be different on each attempt and defeat the point — and pass that key to the mail provider's idempotency/dedup mechanism (most transactional email and payment APIs support one natively). That way, a resumed re-run of the node calls the API again, but the provider recognizes the key and no-ops the second send instead of delivering a duplicate. If the downstream system has no idempotency support at all, the fallback is to check-then-act against your own durable record *before* calling out (query \"did I already send this key?\"), accepting a small unavoidable race, and to keep the node doing nothing but the send — no unrelated logic before or after it that would also silently re-run.",
+    },
+    {
+      type: "heading",
+      text: "Designing the human gate: placement and payload",
+    },
+    {
+      type: "paragraph",
+      text: "Two decisions determine whether a HITL gate is actually safe, and both are easy to get subtly wrong. **Placement**: the interrupt belongs immediately before the irreversible action, not merely \"somewhere before the end.\" Generating a draft payment request, validating it, and formatting it for review are all reversible — do that work before the gate. The interrupt sits right before the node that actually calls the payment provider, so that everything after the human says yes is the smallest possible unit of real-world consequence, which also shrinks the exactly-once redo window from the previous section. A gate placed one node too early (say, before drafting instead of before dispatching) forces the human to approve something that still has to survive another round of processing before it matches what they saw. **Payload design**: don't hand the human your internal state dict and call it a review UI. Apply the same discipline as Lesson 4's handoff briefs — show exactly what will happen if they approve (the concrete action, amounts, recipients — a diff, not a transcript), not raw agent scratch state they'd have to reverse-engineer. And structure the resume value as validated, typed input (`{\"approved\": bool, \"feedback\": str}`) rather than freeform text the node has to re-parse — a human gate that accepts arbitrary prose just relocates the parsing-unreliable-output problem from the model onto the human's typing.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Walk me through everything that has to be true for your HITL system to be safe to leave paused for a week.\"",
+      answer:
+        "I'd list it as a checklist, because in an interview this is where people hand-wave. **Durability**: a real checkpointer — SQLite or Postgres, never `MemorySaver` — because a week-long pause across deploys and restarts is exactly the scenario in-process storage can't survive. **Stable identity**: the `thread_id` scheme has to be deterministic and collision-free (a business key like the research job ID, not a random value generated per attempt) so whoever resumes it a week later can find it. **Idempotent pre-interrupt code**: the interrupted node re-runs from its top on resume, so anything before the `interrupt()` call — including any side effects — must be safe to repeat, per the exactly-once discussion above. **Self-contained payload**: the approval payload can't reference ephemeral resources — a signed URL or a session token that expires in an hour is useless to someone approving on day six; embed what's needed to render the decision, or re-derive fresh links at resume time. **Access control**: durable doesn't mean undirected — I need to know *who* is allowed to resume a given thread, or I've built an approval gate anyone with API access can rubber-stamp. **Retention and expiry**: a policy for how long a paused thread is allowed to sit before it's flagged stale, because 'durable' silently became 'forgotten' more than once in every team's history. **Follow-up probe:** \"what if the human never responds?\" → Durability guarantees the graph *can* resume; it says nothing about *whether* it will. I'd add a timeout path: a scheduled job that scans for threads paused past some SLA and escalates — pages a backup approver, or auto-rejects with a reason — so a stale thread has an owner instead of quietly aging in a database forever.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** A graph drafts a payment request, validates it, and — after human approval — dispatches it to a payment provider. Where exactly do you place the `interrupt()`, and defend the placement.",
+      answer:
+        "Right before the node that makes the actual call to the payment provider — not before drafting, and not folded into a single \"prepare and send\" node. Drafting and validating are reversible: if the human never gets to approve, or rejects, nothing in the real world happened yet, so that work can safely precede the gate and even be redone on a resumed run without consequence. The moment the graph crosses into an irreversible external effect, that's where the human has to have already said yes — placing the gate any earlier means the human is approving a proposal that still has to survive more processing (a validation bug found *after* approval) before it matches what they saw, and placing it any later defeats the point of asking at all. I'd also keep the post-approval dispatch node minimal — its only job is to make the guarded call with an idempotency key — so that if something goes wrong and the node re-runs after resume, the blast radius of a repeat is as small as the exactly-once discussion requires. **Follow-up probe:** \"the payment provider call itself times out after it already debited the account — does the interrupt help there?\" → No, and it's important to say so explicitly: the interrupt only governs whether a human authorized the action before it happened. Once you're past the gate, you're in ordinary side-effect safety territory — the same idempotency-key-plus-reconciliation discipline as any non-interrupt-guarded `charge_customer` call from Module 1. Conflating the two is a common design mistake: teams think a human approval step makes the downstream call safe, when it only makes the *decision* to attempt it accountable.",
     },
     {
       type: "keypoints",

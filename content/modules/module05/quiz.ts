@@ -157,4 +157,69 @@ export const quiz05: QuizQuestion[] = [
     explanation:
       "A fair comparison isolates the one variable you're testing: architecture. Same model, same tools, same 10 questions. The classic cheat (often accidental) is summing only the worker agents' tokens — the planner, critic, and every handoff's re-sent context are real costs. And if the single agent wins, the honest conclusion belongs in the README; that honesty is the portfolio signal.",
   },
+  {
+    question:
+      "What is 'prompt opacity' as a framework cost, and why is it distinct from the framework simply being buggy?",
+    options: [
+      "It means the framework's source code is closed-source, so you can't read how it works",
+      "It means a helper (structured-output wrapper, message formatter) can reshape, append to, or reorder the text actually sent to the model, invisibly to you — you can't fix what you can't see the model receiving, even when the framework has no bugs at all",
+      "It's a synonym for high token cost — opaque prompts are just long prompts",
+      "It only matters for open-weight models, not for hosted APIs like Claude",
+    ],
+    correct: 1,
+    explanation:
+      "Prompt opacity is a structural property of using a framework, not a defect: an abstraction whose whole job is to build your prompt for you may inject formatting instructions, few-shot examples, or schema-repair text you never authored and never see in your source. The mitigation is to enable the framework's debug/callback tracing or, when that's insufficient, wrap the model client yourself so every call funnels through code you control — verify against the wire, not the docs.",
+  },
+  {
+    question:
+      "A node with `operator.add` on its `findings` field is wrapped in a framework retry policy. On failure, the whole node re-runs from the top. What's the resulting bug, and why?",
+    options: [
+      "None — retries and reducers are unrelated concerns",
+      "The retry policy silently disables the reducer, so `findings` reverts to last-write-wins",
+      "Retry policies assume the retried unit is idempotent, but an additive reducer accumulates every attempt — if the node's earlier work succeeded before a later line failed, the retry re-runs the successful part too and appends a duplicate",
+      "The graph fails to compile, because retry policies are incompatible with any reducer other than the default",
+    ],
+    correct: 2,
+    explanation:
+      "A retry re-executes the entire node function, with no notion of which line inside it failed. If work before the failure point already produced a result, and the node unconditionally returns a `findings` update at the end, a retry produces a second update that `operator.add` appends without complaint — reducers don't know or care that a call is a retry. The fix is making the node itself idempotent (or isolating the risky sub-step) before turning on automatic retries, not disabling the reducer.",
+  },
+  {
+    question:
+      "A node calls a real, side-effecting API (e.g., sends an email) and the process crashes before the checkpoint recording the node's completion is written. On resume, what happens by default, and what's the standard fix?",
+    options: [
+      "The graph automatically detects the side effect already happened and skips it",
+      "The node re-runs from its top, so the side-effecting call can fire a second time; the fix is a stable idempotency key (derived from thread_id + a fixed business key, not a per-attempt random value) that the downstream system dedupes on — the same discipline as Module 1's tool-calling idempotency, one layer up",
+      "Nothing — LangGraph checkpoints are transactional with all side effects by design",
+      "The graph refuses to resume any thread that contains a side-effecting node",
+    ],
+    correct: 1,
+    explanation:
+      "The side effect and the checkpoint write are not atomic with each other — the checkpoint only knows what was durably recorded, not what actually happened in the outside world. Resuming re-runs the interrupted/failed node from its top, so a side-effecting call can double-fire. The fix mirrors Module 1: a stable idempotency key the downstream system can dedupe on, plus keeping side-effecting nodes minimal so the redo window is as small as possible.",
+  },
+  {
+    question:
+      "For a graph that drafts a payment request, gets human approval, then dispatches it to a payment provider, where should the `interrupt()` for approval go, and why?",
+    options: [
+      "Immediately before the node that makes the actual payment-provider call — everything reversible (drafting, validating) happens before the gate, so the human approves the smallest, most accurate preview of the one irreversible action",
+      "At the very start of the graph, before any drafting, so the human approves the raw request",
+      "Anywhere is fine as long as it happens somewhere before the graph reaches END",
+      "After the payment dispatch, as a confirmation step",
+    ],
+    correct: 0,
+    explanation:
+      "Placement matters: gating too early forces the human to approve something that still has to survive more processing before it matches reality; gating after the irreversible call defeats the purpose entirely. The interrupt belongs immediately before the node whose only job is the guarded side effect, which also minimizes the exactly-once redo window if that node ever has to re-run after resume.",
+  },
+  {
+    question:
+      "A baseline comparison shows multi-agent scoring 8.0/10 vs. single-agent's 7.8/10 on an LLM-judge, at 4.75x the cost and 2.3x the latency. The judge's own agreement with hand-labels is 90%. What's the defensible conclusion?",
+    options: [
+      "Ship multi-agent — 8.0 beats 7.8, full stop",
+      "The cost and latency deltas are real, directly measured; the 0.2-point quality delta is plausibly within the judge's own ~10% disagreement rate with human labels and hasn't been shown to be a real difference — get a confidence interval on the quality gap before treating it as evidence, and lean toward the cheaper single agent absent that evidence",
+      "Ignore cost and latency entirely — quality is the only metric that matters for a portfolio piece",
+      "The comparison is invalid because the judge should have used temperature 0 for consistency",
+    ],
+    correct: 1,
+    explanation:
+      "Cost and latency are direct measurements; a 0.2-point gap read off a judge with 90% human agreement can easily be noise, not signal. The evidence-based-escalation discipline applies here too: don't let an unvalidated quality delta justify a large, well-measured cost increase. Get significance (more questions, repeated randomized-order judging) before concluding multi-agent actually wins on quality.",
+  },
 ];
