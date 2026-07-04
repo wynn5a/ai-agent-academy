@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson02: Lesson = {
   slug: "building-a-server",
   title: "Building a Server: Tools, Resources & Prompts",
-  minutes: 30,
+  minutes: 40,
   summary:
     "The official Python SDK's FastMCP style makes a server almost embarrassingly small: decorate functions and run. The real content of this lesson is the three primitives — tools, resources, prompts — and the question that distinguishes them: who invokes each?",
   sections: [
@@ -135,9 +135,47 @@ def order_investigation(order_id: str) -> str:
       text: "The single most common first-server bug: debug prints to stdout interleave with JSON-RPC messages and the client reports a cryptic parse error or hangs. On stdio transport, stdout is the wire. Use `logging` configured to stderr, or print to `sys.stderr`. If your server works in the Inspector but not in Claude Desktop, check for stdout pollution first.",
     },
     {
+      type: "heading",
+      text: "Choosing wrong: a design smell audit",
+    },
+    {
+      type: "paragraph",
+      text: "When a 'tool' is really reference data the model must remember to call — a `get_status_codes()` tool added so the model can 'look up' values — that's the resource primitive's job, and using a tool for it costs a wasted round trip plus a real chance the model just guesses the values from training data rather than calling the tool at all. The symmetric mistake runs the other way: exposing an action (e.g. 'restart the service') as a resource nobody would ever proactively attach to context is invisible to the model and simply never fires, because nothing in the resource model lets the model *decide* to trigger it. The diagnostic question from the summary — who decides this gets used? — has a companion worth asking for every capability: what happens if the model never calls it? If the answer is 'the task silently degrades to guessing,' it was probably reference data mis-modeled as a tool.",
+    },
+    {
+      type: "exercise",
+      kind: "spot-the-bug",
+      prompt:
+        "A teammate builds an internal knowledge server. They add `get_company_holidays()` as a **tool** ('call this to see the holiday calendar') and `create_ticket(title, description)` as a **resource** template (`tickets://create/{title}`), reasoning 'resources feel more RESTful for both.' Two weeks in, users report the agent frequently answers holiday questions wrong, and never actually files tickets even when asked to. What's broken, and how do you fix it?",
+      answer:
+        "Both primitives are backwards, and each failure matches this lesson's control model. `get_company_holidays` is static reference data with no side effects and no situational judgment about *when* to fetch it — that's a resource: the host should attach it to context (or tell the model it's available) proactively, not leave it as a tool the model must remember exists and choose to invoke. Because it's a tool, the model often skips calling it and answers a holiday question from training data instead — plausible-sounding, occasionally wrong, and exactly why retrieval-shaped data belongs in resources rather than gated behind a call the model must decide to make. `create_ticket` is backwards in the other direction: it's an action with side effects that must fire precisely when the model decides a ticket is warranted, mid-conversation — the textbook tool case. Modeled as a resource, nothing ever invokes it, because resources are attached by the *host*, and no host proactively decides 'now is the moment to create a ticket' — there's no mechanism for the model to trigger it at all. Fix: swap them. `get_company_holidays` becomes a resource (`company://holidays`) the host attaches whenever holiday-adjacent context is useful; `create_ticket(title, description)` becomes a tool the model calls mid-task, with a docstring stating purpose, arguments, and confirmation semantics if it should be gated. The interview line: **primitive choice is a control-flow decision, not a styling preference — get it backwards and the capability doesn't just work worse, it doesn't fire.**",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"You're reviewing a new MCP server PR. It has one resource: `data://everything`, which returns the company's entire product catalog as raw JSON — 40,000 items. What's wrong, and what would you ask the author to change?\"",
+      answer:
+        "This is a resource problem *and* a response-budget problem stacked together. Resources are host-attached rather than model-invoked, but the host still has to put the resource's content into context if it decides to attach it — and 40,000 items of raw JSON is exactly the context-bloat and token-cost disaster Lesson 4's response-budget rules exist to prevent, just triggered from the resource side instead of the tool side. Ask the author three things: does this need to be one resource at all, or should it be parameterized (`data://catalog/{category}`) so the host attaches only the slice relevant to the current task, mirroring how tools take arguments instead of returning everything; is raw JSON the right shape, or should it be pre-summarized the way a well-designed tool response would be; and — the deeper question — is a 40,000-item catalog resource-shaped at all, or is 'search the catalog' a tool the model should call with a query, since nobody realistically wants the entire catalog attached to every conversation touching this server. Probable answer: keep a small resource for genuinely static reference data (e.g. category taxonomy) and convert bulk lookups into a `search_catalog(query)` tool. **Follow-up probe:** \"the author says resources aren't token-metered the way tool calls are, so it's fine\" → that's false economics — whatever gets attached to context still occupies the context window and costs input tokens on every subsequent turn of that conversation, arguably worse than a tool call's one-time cost, because it persists.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"A prompt template you wrote, `order_investigation(order_id)`, works great in Claude Desktop's slash-command UI. A teammate asks why you didn't just make this a tool instead — 'then the model could invoke it automatically when relevant.' Defend the choice.\"",
+      answer:
+        "The whole value of the prompt primitive is that a human explicitly picks it — not an accidental limitation, the point. `order_investigation` is a procedure a support engineer wants to run deliberately and consistently: same steps, same citation discipline, every time they start investigating a problem order. Making it a tool hands that decision to the model, which now decides whether and when to run the full investigation protocol — including moments the human didn't ask for it, and possibly skipping it when they did. There's a UX argument too: users who want the reusable, well-engineered version of 'investigate an order' benefit from picking it by name rather than hoping their phrasing triggers the right tool call — the same reason slash commands exist in chat products generally, instead of relying purely on natural-language intent detection. The tradeoff is real, though: a prompt template is invisible to the model's own reasoning; if part of the value is the model *deciding* mid-task that a full investigation is warranted — not just the user explicitly starting one — that argues for exposing the same underlying logic as a tool too, since nothing stops a server offering both a prompt template and a tool built on the same procedure for different invocation paths. **Follow-up probe:** \"so should every prompt template also be a tool?\" → no — only when there's a real scenario where the *model*, not the user, should be the one deciding the procedure applies; if it's a human muscle-memory workflow, leave it prompt-only.",
+    },
+    {
       type: "keypoints",
       points: [
         "Tools are model-invoked; resources are application-invoked; prompts are user-invoked. That's checkpoint-quiz material and a design compass.",
+        "Wrong-primitive smell: reference data modeled as a tool gets skipped and guessed instead of called; an action modeled as a resource never fires because nothing invokes it.",
+        "Whatever a resource returns still occupies context and costs tokens on every subsequent turn — resources need response budgeting too, not just tools.",
         "FastMCP: `@mcp.tool()` on a typed, docstringed function → name, schema, description generated for you.",
         "Docstrings are prompts — purpose, output shape, limits, and when NOT to use the tool.",
         "Credentials come from env vars into the server process; the model never sees them.",

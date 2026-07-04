@@ -3,7 +3,7 @@ import type { Lesson } from "@/lib/types";
 export const lesson03: Lesson = {
   slug: "clients-and-transports",
   title: "Clients & Transports: stdio and Streamable HTTP",
-  minutes: 25,
+  minutes: 35,
   summary:
     "A server nobody can talk to is a file of decorators. Write a minimal client so the protocol stops being abstract, then choose transports deliberately: stdio for local single-user tools, streamable HTTP for anything remote or shared.",
   sections: [
@@ -117,6 +117,42 @@ if __name__ == "__main__":
         "Same handshake, either wire: stdio pipes to a subprocess, or streamable HTTP to a remote service — capabilities and messages are identical.",
     },
     {
+      type: "heading",
+      text: "OAuth for remote servers, concretely",
+    },
+    {
+      type: "paragraph",
+      text: "The spec's answer to 'how does a remote MCP server authenticate clients' is an OAuth 2.1-based flow modeled on standard delegated authorization: the client discovers (or is configured with) the server's authorization endpoints, redirects the user through a login/consent screen, and receives a token it attaches to subsequent HTTP requests as a bearer credential — the server never sees the user's actual account password, and the token can be scoped and revoked independently of it. Two consequences worth internalizing for a design or debugging conversation: first, the token is a **bearer** credential — anyone holding it can act as that client, so streamable HTTP transport isn't 'secure' merely because it does OAuth; the token still has to be stored safely and transmitted only over TLS. Second, OAuth authenticates the *client*, not each individual tool call — a compromised client with a valid, unexpired token can call every tool the token's scope allows, which is exactly why least-privilege scoping (Lesson 5) matters as much on the token side as on the server's own downstream API credentials. A stdio server skips all of this by inheriting the OS-level trust of whoever can run the process — a legitimate simplification for a single local user, not a workaround to avoid implementing auth 'for now' on something that's actually going to be shared.",
+    },
+    {
+      type: "exercise",
+      kind: "predict",
+      prompt:
+        "**Predict:** A team ships their internal MCP server over streamable HTTP with a hardcoded, never-rotated bearer token shared by every internal client — 'it's just for the office, and everyone's already on the VPN.' Six months later, what's the most likely way this goes wrong?",
+      answer:
+        "The token behaves like a static password that never expires and is shared across every consumer — so the first time it leaks (checked into a repo, pasted into a support ticket, left in a client's synced local config), there is no way to revoke access for just the leaked copy without breaking every legitimate client simultaneously, because they're all using the identical credential. There's also no per-client attribution: every tool call looks identical in the server's logs regardless of who actually made it, so when something goes wrong — a destructive tool fires unexpectedly, or a downstream API rate limit gets exhausted — there's no way to trace which client or session was responsible. The VPN argument only covers network-layer access, not application-layer authorization; anyone already inside the VPN (a compromised laptop, a contractor with broader network access than tool access) gets full tool access with zero additional barrier. The fix is per-client OAuth tokens (or at minimum per-client static tokens that can be individually revoked and are logged with caller identity) — cheap to set up early, expensive to retrofit once 'everyone already has the shared token' is the entrenched habit.",
+    },
+    {
+      type: "heading",
+      text: "Whiteboard drills",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"A personal GitHub-integration MCP server currently runs over stdio on your laptop. Product wants to make it a shared team tool. Walk me through everything that has to change — not just the transport flag.\"",
+      answer:
+        "Frame it as: transport is the easy 5% of this migration, trust boundary is the other 95%. Mechanically, flip `mcp.run()` to `transport=\"streamable-http\"` — that part really is that small, because transport is orthogonal to capabilities. Everything else changes: authentication goes from 'whoever can run this process' to 'every request needs a validated, scoped bearer token' via the spec's OAuth flow, which means standing up token issuance and storage; TLS becomes mandatory, not optional, since bearer tokens over plaintext HTTP are as good as no auth; the server's own downstream GitHub credentials need re-scoping — a personal server used only by you can hold a token with your full personal permissions, a shared server used by a team needs the narrowest token that covers every team member's legitimate use, because now a bug or injected prompt affects everyone connected, not just you; logging needs caller identity attached to every tool call, which didn't matter when there was one user; and operationally, someone now owns uptime, monitoring, and incident response for what used to just die when you closed your laptop. Close with the framing line: stdio's security model is 'inherit the OS,' and the moment you go multi-user that model doesn't degrade gracefully — it stops applying, and you have to build a real one from scratch. **Follow-up probe:** \"what's the single most commonly skipped step?\" → re-scoping the downstream credential — teams reuse the personal, over-permissioned token because it already works, and only notice the blast radius after an incident.",
+    },
+    {
+      type: "exercise",
+      kind: "concept",
+      prompt:
+        "**Drill:** \"Give me a scenario where stdio is the better engineering choice even though the team has the infrastructure to run everything as a shared HTTP service.\"",
+      answer:
+        "Any tool that only makes sense scoped to one machine and one identity, where the 'shared service' framing actively adds risk without adding value. Concretely: a local filesystem or local-dev-environment MCP server — one that reads files from the user's own project directory, or drives their local git worktree — has no sensible multi-tenant story at all; as a shared HTTP service you're either running it once per user anyway (gaining nothing but auth overhead) or trying to make one process safely access forty different users' filesystems, a much harder and riskier problem than the one you started with. The other classic case is a debugging or admin tool intentionally scoped to 'whoever is sitting at this terminal' — a stdio server run by an on-call engineer during an incident inherits exactly the access that engineer already has, with zero additional attack surface; making it a shared HTTP service would mean building and auditing an entire auth layer for a tool whose entire threat model is 'already-trusted person, already on the machine.' The generalizable test: if the tool's natural scope is inherently single-user and single-machine, HTTP's multi-client story solves a problem you don't have while introducing the auth, TLS, and ops obligations you do have to solve instead. **Follow-up probe:** \"what if that local tool later needs to be triggered remotely, e.g. from CI?\" → that's a genuinely different requirement, not a 'let's future-proof it' preference — build the HTTP version when that concrete need arrives, informed by what CI actually needs to call, rather than speculatively.",
+    },
+    {
       type: "keypoints",
       points: [
         "A client = transport + `ClientSession`: initialize → list_tools → call_tool. The SDK is a typed veneer over Lesson 1's JSON.",
@@ -124,6 +160,8 @@ if __name__ == "__main__":
         "stdio: local, single-user, spawned subprocess, zero deploy. Streamable HTTP: remote, multi-client, needs auth + TLS + ops.",
         "Transport is orthogonal to capabilities — same decorated functions serve both.",
         "Remote servers must authenticate clients (OAuth-based flow in the spec / bearer tokens at minimum) and scope their own credentials tightly.",
+        "OAuth authenticates the client via a bearer token, not each tool call — an overscoped or leaked shared token gives full, unattributable tool access.",
+        "Prefer per-client tokens over one shared static token: revocation and caller attribution both depend on it.",
       ],
     },
   ],
