@@ -32,8 +32,8 @@ export const lesson04: Lesson = {
         ],
         [
           "Forced tool call",
-          "A forced tool call whose `input_schema` is your output schema",
-          "Same guarantee — the portable fallback for any tool-calling model.",
+          "A forced tool call with `strict: true` set on the tool",
+          "Same guarantee — but only when `strict` is set. Plain forced calls (no `strict`) aren't grammar-enforced and can still deviate.",
         ],
       ],
     },
@@ -90,6 +90,12 @@ data = json.loads(resp.output_text)   # guaranteed to match the schema`,
       ],
     },
     {
+      type: "callout",
+      kind: "warning",
+      title: "OpenAI strict mode has no true optional field",
+      text: 'OpenAI\'s `strict: true` requires **every** property in `properties` to also appear in `required` — there\'s no way to just omit an optional one. To fake it, make the type nullable (`{"type": ["string", "null"]}`) and keep it in `required`; the model returns `null` when it has nothing to say. Anthropic\'s `output_config.format` doesn\'t have this restriction — a property left out of `required` is genuinely optional there. It\'s a real asymmetry, and the one OpenAI structured-outputs gotcha every team hits once (Pydantic\'s `Optional[...]` and Zod\'s `.optional()`/`.nullish()` both produce schemas OpenAI rejects — use a plain nullable type instead).',
+    },
+    {
       type: "code",
       language: "python",
       title: "the tool-call trick — the portable fallback",
@@ -108,7 +114,9 @@ resp = client.messages.create(
                 "summary":  {"type": "string"},
             },
             "required": ["category", "severity", "summary"],
+            "additionalProperties": False,     # required for strict tool use
         },
+        "strict": True,     # opts into the same constrained-decoding guarantee
     }],
     tool_choice={"type": "tool", "name": "record_ticket"},   # MUST call it
     messages=[{"role": "user", "content": f"Classify this ticket: {ticket_text}"}],
@@ -116,7 +124,7 @@ resp = client.messages.create(
 data = next(b for b in resp.content if b.type == "tool_use").input
 # data is a dict matching the schema — no parsing prose`,
       explanation:
-        "`tool_choice` forces the call, so the 'tool' is really just an output mold. Before native structured outputs shipped, this *was* the standard Anthropic pattern — and it remains the portable one: it works on any tool-calling model, any provider, any API version. Conceptually it's also what structured outputs desugar to: constrained generation against a schema.",
+        "`tool_choice` forces the call, so the 'tool' is really just an output mold — but the schema guarantee only kicks in with `strict: true` on the tool (Anthropic's *strict tool use*, a separate opt-in from `output_config.format`, with the same `additionalProperties: false` + fully-`required` preconditions). Without `strict`, a forced call can still emit arguments that miss the schema. Before native structured outputs shipped, plain forced tool calls (no `strict`) *were* the standard pattern — reliable in practice, but not grammar-enforced — and that best-effort version remains the fallback for providers whose tool calling doesn't support schema-constrained decoding at all.",
       provider: "claude",
       variants: [
         {
@@ -128,6 +136,7 @@ resp = client.responses.create(
         "type": "function",
         "name": "record_ticket",
         "description": "Record the classified support ticket.",
+        "strict": True,     # opts into schema-enforced arguments
         "parameters": {
             "type": "object",
             "properties": {
@@ -137,6 +146,7 @@ resp = client.responses.create(
                 "summary":  {"type": "string"},
             },
             "required": ["category", "severity", "summary"],
+            "additionalProperties": False,     # required for strict mode
         },
     }],
     tool_choice={"type": "function", "name": "record_ticket"},   # MUST call it
@@ -146,7 +156,7 @@ call = next(i for i in resp.output if i.type == "function_call")
 data = json.loads(call.arguments)
 # data is a dict matching the schema — no parsing prose`,
           explanation:
-            'Same trick, OpenAI plumbing: `tool_choice={"type": "function", "name": ...}` forces the call, the schema key is `parameters`, and `arguments` arrives as a JSON string to parse (vs Anthropic\'s already-parsed `block.input`).',
+            'Same trick, OpenAI plumbing: `tool_choice={"type": "function", "name": ...}` forces the call, the schema key is `parameters`, and `arguments` arrives as a JSON string to parse (vs Anthropic\'s already-parsed `block.input`). The `strict: true` here is OpenAI\'s own function-calling strict mode — the same flag structured outputs uses — and it carries the same `additionalProperties: false` + fully-`required` precondition as Anthropic\'s strict tool use.',
         },
       ],
     },
@@ -163,9 +173,15 @@ data = json.loads(call.arguments)
       text: 'Understanding the mechanism makes the limits obvious. Structure, types, `enum`, `required`, string formats — all expressible as *which token can come next*, so all enforceable. But `"minimum": 1, "maximum": 5` on a number? When the model has emitted `1`, is that the value 1 (valid), or the start of 15 (invalid)? Value-level constraints aren\'t decidable token-by-token, so **numeric ranges, string lengths, and recursive schemas are not enforced** by constrained decoding. That is exactly why the validation layer below still exists, even with a \'guaranteed\' schema.',
     },
     {
+      type: "animation",
+      name: "schema-masking",
+      caption:
+        "Constrained decoding on the ticket schema: grammar-invalid tokens get their logits masked to −∞ before softmax, no matter how high their raw score was.",
+    },
+    {
       type: "callout",
       kind: "tip",
-      text: "Two practical mechanics worth naming in an interview: schema **compilation** happens on the first request (a one-time latency hit; the compiled grammar is cached for ~24h — so keep schemas stable rather than generating them dynamically per request), and `additionalProperties: false` on every object plus a complete `required` list are *preconditions* for constrained decoding — the schema must be closed for the grammar to be finite. The SDK helpers (`parse()` with Pydantic/Zod) quietly strip unsupported constraints from what's sent to the API and enforce them client-side.",
+      text: "Two practical mechanics worth naming in an interview: schema **compilation** happens on the first request (a one-time latency hit; the compiled grammar is cached for ~24h — so keep schemas stable rather than generating them dynamically per request), and `additionalProperties: false` on every object is a *precondition* for `output_config.format` — the schema must be closed for the grammar to be finite. A complete `required` list is **not** required there — a property left out of `required` is genuinely optional and Claude can omit it. (Strict tool use and OpenAI's strict mode are stricter: both require every property in `required`, faking 'optional' with a nullable type — previous section.) The SDK helpers (`parse()` with Pydantic/Zod) quietly strip unsupported constraints from what's sent to the API and enforce them client-side.",
     },
     {
       type: "heading",

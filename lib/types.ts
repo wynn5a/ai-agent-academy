@@ -64,6 +64,7 @@ export type AnimationName =
   | "token-stream"
   | "token-selection"
   | "temperature"
+  | "schema-masking"
   | "context-window"
   | "tool-calling"
   | "rag-pipeline"

@@ -465,6 +465,175 @@ export function TokenSelectionAnim() {
   );
 }
 
+/* ---------- 3b. Structured outputs: grammar masks invalid tokens ---------- */
+const SM_STAGES = [
+  { label: "Logits", sub: "raw scores", color: "#a78bfa" },
+  { label: "Mask grammar", sub: "invalid → -∞", color: "#f87171" },
+  { label: "Softmax", sub: "renormalize", color: "#38bdf8" },
+  { label: "Sample", sub: "append", color: "#34d399" },
+];
+const SM_XS = [8, 148, 398, 528];
+const SM_CANDIDATES: { text: string; logit: number; valid: boolean }[] = [
+  { text: '"billing"', logit: 3.1, valid: true },
+  { text: '"5"', logit: 2.9, valid: false },
+  { text: '"bug"', logit: 2.2, valid: true },
+  { text: '"feature_request"', logit: 1.6, valid: true },
+  { text: '"other"', logit: 1.0, valid: true },
+];
+const SM_MASKED = SM_CANDIDATES.map((t) => (t.valid ? t.logit : -Infinity));
+const SM_PROBS = softmax(SM_MASKED);
+const SM_WINNER = SM_PROBS.indexOf(Math.max(...SM_PROBS));
+const SM_CAPTIONS = [
+  "the schema compiled to a grammar; every candidate token still gets a raw logit, same as any other decoding step",
+  'tokens that would break the grammar — not the start of any enum value — get masked to −∞ before sampling, regardless of their raw score ("5" scored higher than two valid options)',
+  "softmax renormalizes over what's left: masked tokens get exactly 0% probability, no matter how high their logit was",
+  'the sampler draws from the survivors only — the model cannot physically emit "5" here, even though its raw logit outranked two valid options',
+];
+
+export function SchemaMaskingAnim() {
+  const { step } = useAnimPlayback();
+  return (
+    <Stage viewBox="0 0 640 300">
+      {SM_STAGES.map((s, i) => (
+        <StepReveal key={i} index={i} dim={1}>
+          <Node
+            x={SM_XS[i]}
+            y={14}
+            w={104}
+            h={44}
+            label={s.label}
+            sub={s.sub}
+            color={s.color}
+          />
+        </StepReveal>
+      ))}
+      <StepReveal index={1} dim={1}>
+        <FlowEdge d="M 112 36 H 148" color={SM_STAGES[1].color} />
+      </StepReveal>
+      <StepReveal index={2} dim={1}>
+        <FlowEdge d="M 252 36 H 398" color={SM_STAGES[2].color} />
+      </StepReveal>
+      <StepReveal index={3} dim={1}>
+        <FlowEdge d="M 502 36 H 528" color={SM_STAGES[3].color} />
+      </StepReveal>
+
+      <text
+        x={320}
+        y={80}
+        textAnchor="middle"
+        fill="#64748b"
+        fontSize={10.5}
+        fontFamily="monospace"
+      >
+        after {'{"category": "'} — {SM_CAPTIONS[step]}
+      </text>
+
+      {SM_CANDIDATES.map((tok, i) => {
+        const y = 98 + i * 34;
+        const isWinner = i === SM_WINNER;
+        const blocked = !tok.valid && step >= 1;
+        return (
+          <g key={i}>
+            <text
+              x={186}
+              y={y + 15}
+              textAnchor="end"
+              fill={blocked ? "#64748b" : "#94a3b8"}
+              fontSize={11}
+              fontFamily="monospace"
+              textDecoration={blocked ? "line-through" : undefined}
+            >
+              {tok.text}
+            </text>
+            {step <= 0 ? (
+              <text
+                x={196}
+                y={y + 15}
+                fill="#c4b5fd"
+                fontSize={12}
+                fontFamily="monospace"
+              >
+                {tok.logit.toFixed(1)}
+              </text>
+            ) : step === 1 ? (
+              <text
+                x={196}
+                y={y + 15}
+                fill={tok.valid ? "#34d399" : "#f87171"}
+                fontSize={12}
+                fontFamily="monospace"
+              >
+                {tok.valid ? `${tok.logit.toFixed(1)} ✓ grammar-valid` : "−∞ ✗ blocked"}
+              </text>
+            ) : (
+              <>
+                <rect
+                  x={196}
+                  y={y}
+                  width={280}
+                  height={20}
+                  rx={4}
+                  fill="#ffffff08"
+                />
+                <motion.rect
+                  x={196}
+                  y={y}
+                  height={20}
+                  rx={4}
+                  fill={isWinner && step >= 3 ? "#34d399" : "#38bdf8"}
+                  fillOpacity={0.7}
+                  stroke={isWinner && step >= 3 ? "#34d399" : "transparent"}
+                  strokeWidth={1.5}
+                  initial={false}
+                  animate={{ width: 280 * SM_PROBS[i] }}
+                  transition={{ duration: 0.5 }}
+                />
+                <text
+                  x={486}
+                  y={y + 15}
+                  fill="#64748b"
+                  fontSize={10}
+                  fontFamily="monospace"
+                >
+                  {Math.round(SM_PROBS[i] * 100)}%
+                  {isWinner && step >= 3 ? "  ✓ sampled" : ""}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+
+      {step >= 3 && (
+        <StepFade opacity={1}>
+          <rect
+            x={55}
+            y={258}
+            width={530}
+            height={32}
+            rx={6}
+            fill="none"
+            stroke="#232f47"
+            strokeWidth={1.5}
+          />
+          <text
+            x={320}
+            y={278}
+            textAnchor="middle"
+            fill="#e2e8f0"
+            fontSize={11}
+            fontFamily="monospace"
+          >
+            {'{"category": '}
+            <tspan fill="#34d399">{SM_CANDIDATES[SM_WINNER].text}</tspan>
+            {"} — structurally valid; severity/summary follow the same way"}
+          </text>
+        </StepFade>
+      )}
+    </Stage>
+  );
+}
+
 /* ---------- 4. Temperature / sampling ---------- */
 const DIST = [
   { tok: '"Paris"', p0: 0.86, p1: 0.44 },

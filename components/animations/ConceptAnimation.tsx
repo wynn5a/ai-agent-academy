@@ -63,6 +63,14 @@ const REGISTRY: Record<AnimationName, Entry> = {
     h: 260,
     cycleMs: 1800, // bars grow in 1s + 0.36s stagger
   },
+  "schema-masking": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.SchemaMaskingAnim),
+    ),
+    w: 640,
+    h: 300,
+    steps: 4,
+  },
   "context-window": {
     Component: dynamic(() =>
       import("./FoundationAnims").then((m) => m.ContextWindowAnim),
