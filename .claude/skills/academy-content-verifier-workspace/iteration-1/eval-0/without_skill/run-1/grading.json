@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "A verification report file was written (under reviews/ or the outputs dir) that scores the lesson against all 7 standards with an explicit per-standard verdict.",
+      "passed": true,
+      "evidence": "verification-report.md scores all 7: Factual accuracy ('all correct' / 'accurate; one soft area'), plus '## Quality-standard scan (Academy's seven bars)' with Depth/Dual-provider/Interactivity/Tables/Role alignment/Clarity verdicts. Verdicts are spread across sections rather than one table, but each standard gets an explicit verdict."
+    },
+    {
+      "text": "The review reaches a clear ship/no-ship recommendation for the lesson.",
+      "passed": true,
+      "evidence": "'**Verdict:** Ship it. No blocking issues.' and '## Recommendation: Good to ship as-is.'"
+    },
+    {
+      "text": "Because this lesson is the Academy's exemplar, the review does NOT raise any fabricated Blocker or Major finding; it recognizes the content as strong.",
+      "passed": true,
+      "evidence": "'No blocking issues. One optional polish note.' and 'Everything factual on the Anthropic side is correct and unusually precise.' No Blocker/Major raised."
+    },
+    {
+      "text": "Any findings raised are genuinely Minor/Polish and are backed by a specific file:line reference rather than a vague opinion.",
+      "passed": true,
+      "evidence": "Only finding is the 'Soft area (L79, L111)' version-drift note, explicitly labeled 'not a defect', with line refs L79/L111."
+    },
+    {
+      "text": "The mechanical checks.py script was run as part of the pass.",
+      "passed": false,
+      "evidence": "No 'Mechanical pass'/checks.py section anywhere. Method lists 'Ran `npx tsc --noEmit` — exit 0' and manual animation-dispatch checks, but the mechanical checks.py script is never invoked or shown."
+    },
+    {
+      "text": "No content file under content/modules/ was edited (the skill is report-only unless asked to fix).",
+      "passed": true,
+      "evidence": "Harness git check confirms eval-0 target untouched. Chat summary: 'No changes required before commit.' Report-only."
+    },
+    {
+      "text": "A concise chat summary was produced in addition to the full report file.",
+      "passed": true,
+      "evidence": "chat_summary.md exists, distinct from verification-report.md."
+    }
+  ],
+  "summary": {"passed": 6, "failed": 1, "total": 7, "pass_rate": 0.857}
+}

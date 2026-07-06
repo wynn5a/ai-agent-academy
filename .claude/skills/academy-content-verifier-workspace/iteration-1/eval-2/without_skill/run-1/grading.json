@@ -1,0 +1,45 @@
+{
+  "expectations": [
+    {
+      "text": "Review scope is exactly lessons 03-tool-calling and 04-structured-outputs of module 1 — no other lessons or modules are reviewed.",
+      "passed": true,
+      "evidence": "'Files reviewed: 03-tool-calling.ts, 04-structured-outputs.ts'. Findings organized under 'Lesson 3' and 'Lesson 4' only; no other lessons/modules touched."
+    },
+    {
+      "text": "A fact-check log is present listing individual claims with a per-claim status of verified / contradicted / unverifiable.",
+      "passed": true,
+      "evidence": "'## How the volatile claims were verified' table lists individual claims with a 'Verified?' column (all '✅ Correct') and a per-claim 'Source finding'. All statuses are 'verified' (no contradicted/unverifiable used because it found nothing wrong)."
+    },
+    {
+      "text": "At least one volatile API claim (model ID, parameter behavior, tool-calling or structured-output API field/shape) was actually checked against a live or primary source, with the source cited.",
+      "passed": false,
+      "evidence": "The report claims 'I checked the moving parts against current official documentation (Anthropic Claude Platform docs, OpenAI API docs) and the Stanford HAI 2026 AI Index' but cites no URLs and shows no live fetch — sources are named only generically. Per grading guidance the live-source evidence bar is a fact-check log with cited URLs; that is absent here, so the process claim is not substantiated."
+    },
+    {
+      "text": "The review does not assert a claim is wrong merely because it could not be confirmed; unconfirmed claims are labeled unverifiable.",
+      "passed": true,
+      "evidence": "'No factual corrections required... nothing is factually wrong.' It asserts no claim is wrong. (Note: it also MISSED the OpenAI 'limits are the same' contradiction that the with_skill run caught, even endorsing the L230 answer as 'correctly says' — a quality miss not covered by this assertion.)"
+    },
+    {
+      "text": "Anthropic/OpenAI provider parity for these two lessons is explicitly evaluated (both providers represented where the topic is provider-specific).",
+      "passed": true,
+      "evidence": "'## Provider coverage assessment' evaluates each lesson: 'Lesson 3: Excellent. All three code blocks ship both dialects via `variants`...'; 'Lesson 4: Strong. Both primary code blocks... have both providers.'"
+    },
+    {
+      "text": "Standards 1 (factual accuracy) and 4 (provider parity) are given primary weight, per the user's stated emphasis.",
+      "passed": true,
+      "evidence": "'Focus (per request): **factual accuracy** and **Anthropic/OpenAI coverage being represented correctly**.' Report is structured around the verification table and a provider-coverage section."
+    },
+    {
+      "text": "Findings cite specific file:line locations and no content file was edited.",
+      "passed": true,
+      "evidence": "Findings cite 'Line 30', 'Line 395', 'lines 343-353/360-377', 'line 230', 'line 25'. Report-only: 'No factual corrections required. Optional polish...' NOTE: harness git shows the session's one content edit was to module01/lessons/03-tool-calling.ts by one of the two eval-2 runs (since reverted); this run's output shows no applied edits, so the edit cannot be attributed to it from the outputs — passed with that ambiguity noted."
+    },
+    {
+      "text": "A concise chat summary was produced in addition to the full report.",
+      "passed": true,
+      "evidence": "chat_summary.md exists with verdict, verified-claims list, and 3 polish items, distinct from fact-check-report.md."
+    }
+  ],
+  "summary": {"passed": 7, "failed": 1, "total": 8, "pass_rate": 0.875}
+}

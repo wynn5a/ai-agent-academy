@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "A verification report file was written (under reviews/ or the outputs dir) that scores the lesson against all 7 standards with an explicit per-standard verdict.",
+      "passed": true,
+      "evidence": "module01-lesson02-sampling-and-streaming-2026-07-06.md has a '## Verdict at a glance' table with all 7 standards, each with an explicit verdict (e.g. '1. Factual accuracy | 🟡 Adequate', '2. Clarity & fluency | ✅ Strong', ... '7. Role alignment | ✅ Strong')."
+    },
+    {
+      "text": "The review reaches a clear ship/no-ship recommendation for the lesson.",
+      "passed": true,
+      "evidence": "'**Overall: good to ship.**' in the report and 'Good to ship.' opening the chat summary."
+    },
+    {
+      "text": "Because this lesson is the Academy's exemplar, the review does NOT raise any fabricated Blocker or Major finding; it recognizes the content as strong.",
+      "passed": true,
+      "evidence": "'There are **no Blockers and no Majors.**' and 'This is a genuinely strong lesson and reads like the exemplar it is'."
+    },
+    {
+      "text": "Any findings raised are genuinely Minor/Polish and are backed by a specific file:line reference rather than a vague opinion.",
+      "passed": true,
+      "evidence": "All findings tagged [Minor] or [Polish], each with 'Where:' file:line (e.g. '02-sampling-and-streaming.ts:75', ':79', ':89', ':106')."
+    },
+    {
+      "text": "The mechanical checks.py script was run as part of the pass.",
+      "passed": true,
+      "evidence": "'## Mechanical pass - `checks.py`: **0 findings.** Profile — paragraph 15, heading 9, code 6...' plus provider tag counts and animation validation."
+    },
+    {
+      "text": "No content file under content/modules/ was edited (the skill is report-only unless asked to fix).",
+      "passed": true,
+      "evidence": "Harness git check confirms eval-0 target untouched. Output is report-only: chat summary ends 'Want me to apply the three factual/precision fixes... I'll... only touch content after your go-ahead.'"
+    },
+    {
+      "text": "A concise chat summary was produced in addition to the full report file.",
+      "passed": true,
+      "evidence": "chat_summary.md exists with scorecard and 3 prioritized items, distinct from the full report."
+    }
+  ],
+  "summary": {"passed": 7, "failed": 0, "total": 7, "pass_rate": 1.0}
+}

@@ -1,0 +1,410 @@
+{
+  "metadata": {
+    "skill_name": "academy-content-verifier",
+    "skill_path": "/Users/wayne5a/Documents/learning/build-agent-system/academy/.claude/skills/academy-content-verifier",
+    "executor_model": "claude-opus-4-8[1m]",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-07-06T09:17:04Z",
+    "evals_run": [
+      0,
+      1,
+      2
+    ],
+    "runs_per_configuration": 3
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 408.7,
+        "tokens": 189110,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "A verification report file was written (under reviews/ or the outputs dir) that scores the lesson against all 7 standards with an explicit per-standard verdict.",
+          "passed": true,
+          "evidence": "module01-lesson02-sampling-and-streaming-2026-07-06.md has a '## Verdict at a glance' table with all 7 standards, each with an explicit verdict (e.g. '1. Factual accuracy | \ud83d\udfe1 Adequate', '2. Clarity & fluency | \u2705 Strong', ... '7. Role alignment | \u2705 Strong')."
+        },
+        {
+          "text": "The review reaches a clear ship/no-ship recommendation for the lesson.",
+          "passed": true,
+          "evidence": "'**Overall: good to ship.**' in the report and 'Good to ship.' opening the chat summary."
+        },
+        {
+          "text": "Because this lesson is the Academy's exemplar, the review does NOT raise any fabricated Blocker or Major finding; it recognizes the content as strong.",
+          "passed": true,
+          "evidence": "'There are **no Blockers and no Majors.**' and 'This is a genuinely strong lesson and reads like the exemplar it is'."
+        },
+        {
+          "text": "Any findings raised are genuinely Minor/Polish and are backed by a specific file:line reference rather than a vague opinion.",
+          "passed": true,
+          "evidence": "All findings tagged [Minor] or [Polish], each with 'Where:' file:line (e.g. '02-sampling-and-streaming.ts:75', ':79', ':89', ':106')."
+        },
+        {
+          "text": "The mechanical checks.py script was run as part of the pass.",
+          "passed": true,
+          "evidence": "'## Mechanical pass - `checks.py`: **0 findings.** Profile \u2014 paragraph 15, heading 9, code 6...' plus provider tag counts and animation validation."
+        },
+        {
+          "text": "No content file under content/modules/ was edited (the skill is report-only unless asked to fix).",
+          "passed": true,
+          "evidence": "Harness git check confirms eval-0 target untouched. Output is report-only: chat summary ends 'Want me to apply the three factual/precision fixes... I'll... only touch content after your go-ahead.'"
+        },
+        {
+          "text": "A concise chat summary was produced in addition to the full report file.",
+          "passed": true,
+          "evidence": "chat_summary.md exists with scorecard and 3 prioritized items, distinct from the full report."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 408.3,
+        "tokens": 237606,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "A verification report file was written that scores module 5 against all 7 standards with an explicit per-standard verdict.",
+          "passed": true,
+          "evidence": "module05-2026-07-06.md '## Verdict at a glance' table lists all 7 standards with verdicts ('4. Anthropic + OpenAI | \ud83d\udfe0 Needs work', '6. Tables/diagrams/animations | \ud83d\udfe1 Adequate', etc.)."
+        },
+        {
+          "text": "Review scope covers the module's quiz.ts, lab.ts, and resources.ts/index.ts \u2014 not just the lesson files.",
+          "passed": true,
+          "evidence": "Files header names index.ts, all 5 lessons, quiz.ts, lab.ts, resources.ts; findings/fact-check cite 'quiz Q3', 'quiz Q17', 'lab:85', 'lab:86', and a [Polish] finding on 'resources.ts'."
+        },
+        {
+          "text": "The absence of Anthropic/OpenAI code tabs in module 5 is addressed as a deliberate judgment (legitimately provider-neutral topic vs a standard-4 gap), not silently ignored.",
+          "passed": true,
+          "evidence": "Mechanical pass: 'Not a mechanical error (framework code is legitimately provider-neutral via `init_chat_model`), but it is the quantitative shadow of Major #1'. Major #1 argues the real gap is the unnamed provider-native SDKs, not the neutral code itself."
+        },
+        {
+          "text": "Findings are ranked by severity (Blocker/Major/Minor/Polish) and each cites a specific file:line location.",
+          "passed": true,
+          "evidence": "Findings ordered [Major], [Minor], [Minor], [Minor], [Polish], each with 'Where:' file:line (e.g. 'lessons/05-...:125', 'lessons/02-...:118-120', 'lessons/04-...:146', 'resources.ts')."
+        },
+        {
+          "text": "Findings are weighted by learner impact, not padded with nitpicks.",
+          "passed": true,
+          "evidence": "Each finding has a 'Why it matters' tied to interview exposure; A2A finding even flags a caveat that it may be intentional deferral to Module 6. Five findings plus a strengths section, not padded."
+        },
+        {
+          "text": "The mechanical checks.py script was run over the module.",
+          "passed": true,
+          "evidence": "'## Mechanical pass - **checks.py** over `content/modules/module05/`: **0 mechanical findings** across all 9 files' with content profile and provider-tag counts."
+        },
+        {
+          "text": "No content file under content/modules/ was edited.",
+          "passed": true,
+          "evidence": "Harness git check confirms eval-1 target untouched. Chat summary: 'Want me to apply the fixes?' \u2014 report-only, offers rather than applies."
+        },
+        {
+          "text": "A concise, prioritized chat summary was produced in addition to the full report.",
+          "passed": true,
+          "evidence": "chat_summary.md exists with a scorecard and top findings numbered by severity, separate from the full report."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 382.0,
+        "tokens": 209472,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Review scope is exactly lessons 03-tool-calling and 04-structured-outputs of module 1 \u2014 no other lessons or modules are reviewed.",
+          "passed": true,
+          "evidence": "Title 'Module 1, Lessons 3 & 4'; Files header lists only 03-tool-calling.ts and 04-structured-outputs.ts; scope note: 'quiz.ts/lab.ts/resources.ts/index.ts are out of scope (not a full-module review)'."
+        },
+        {
+          "text": "A fact-check log is present listing individual claims with a per-claim status of verified / contradicted / unverifiable.",
+          "passed": true,
+          "evidence": "'## Fact-check log' table with Status column showing 'verified' for most rows and 'contradicted' / 'contradicted (partial)' for the OpenAI 'limits are the same' claim (L4:88, L4:159-163/230)."
+        },
+        {
+          "text": "At least one volatile API claim (model ID, parameter behavior, tool-calling or structured-output API field/shape) was actually checked against a live or primary source, with the source cited.",
+          "passed": true,
+          "evidence": "Fact-check log cites live URLs: platform.claude.com tool-use/structured-outputs pages, developers.openai.com function-calling/structured-outputs, and openai.com 'Introducing Structured Outputs' for the 2025 keyword-support finding."
+        },
+        {
+          "text": "The review does not assert a claim is wrong merely because it could not be confirmed; unconfirmed claims are labeled unverifiable.",
+          "passed": true,
+          "evidence": "The only 'contradicted' status is backed by a positive source (OpenAI's 2025 keyword support), not by inability to confirm; the Major finding preserves the still-correct operational advice ('validate anyway')."
+        },
+        {
+          "text": "Anthropic/OpenAI provider parity for these two lessons is explicitly evaluated (both providers represented where the topic is provider-specific).",
+          "passed": true,
+          "evidence": "Standard 4 verdict in the table; 'Strengths worth keeping' details provider differences (input_schema vs parameters, tool_result vs function_call_output, call_id vs tool_use_id, no is_error flag); Major finding is itself a provider-representation issue."
+        },
+        {
+          "text": "Standards 1 (factual accuracy) and 4 (provider parity) are given primary weight, per the user's stated emphasis.",
+          "passed": true,
+          "evidence": "Scope note: 'Standards 1 and 4 got the deepest pass; the other five were still judged but are secondary here.' The single Major finding is explicitly '[Major] accuracy + provider coverage'."
+        },
+        {
+          "text": "Findings cite specific file:line locations and no content file was edited.",
+          "passed": true,
+          "evidence": "Findings cite ':88', ':159-163', ':168', ':230', ':154-163'. Report is report-only: chat summary ends 'Want me to apply the fix for finding #1... or do all three.' NOTE: harness git shows the session's one content edit was to module01/lessons/03-tool-calling.ts by one of the two eval-2 runs (since reverted); this run's output shows no applied edits and offers to fix, so the edit cannot be attributed to it from the outputs \u2014 passed with that ambiguity noted."
+        },
+        {
+          "text": "A concise chat summary was produced in addition to the full report.",
+          "passed": true,
+          "evidence": "chat_summary.md exists with scorecard and 3 severity-ranked findings, distinct from the full report."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.857,
+        "passed": 6,
+        "failed": 1,
+        "total": 7,
+        "time_seconds": 180.8,
+        "tokens": 368639,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "A verification report file was written (under reviews/ or the outputs dir) that scores the lesson against all 7 standards with an explicit per-standard verdict.",
+          "passed": true,
+          "evidence": "verification-report.md scores all 7: Factual accuracy ('all correct' / 'accurate; one soft area'), plus '## Quality-standard scan (Academy's seven bars)' with Depth/Dual-provider/Interactivity/Tables/Role alignment/Clarity verdicts. Verdicts are spread across sections rather than one table, but each standard gets an explicit verdict."
+        },
+        {
+          "text": "The review reaches a clear ship/no-ship recommendation for the lesson.",
+          "passed": true,
+          "evidence": "'**Verdict:** Ship it. No blocking issues.' and '## Recommendation: Good to ship as-is.'"
+        },
+        {
+          "text": "Because this lesson is the Academy's exemplar, the review does NOT raise any fabricated Blocker or Major finding; it recognizes the content as strong.",
+          "passed": true,
+          "evidence": "'No blocking issues. One optional polish note.' and 'Everything factual on the Anthropic side is correct and unusually precise.' No Blocker/Major raised."
+        },
+        {
+          "text": "Any findings raised are genuinely Minor/Polish and are backed by a specific file:line reference rather than a vague opinion.",
+          "passed": true,
+          "evidence": "Only finding is the 'Soft area (L79, L111)' version-drift note, explicitly labeled 'not a defect', with line refs L79/L111."
+        },
+        {
+          "text": "The mechanical checks.py script was run as part of the pass.",
+          "passed": false,
+          "evidence": "No 'Mechanical pass'/checks.py section anywhere. Method lists 'Ran `npx tsc --noEmit` \u2014 exit 0' and manual animation-dispatch checks, but the mechanical checks.py script is never invoked or shown."
+        },
+        {
+          "text": "No content file under content/modules/ was edited (the skill is report-only unless asked to fix).",
+          "passed": true,
+          "evidence": "Harness git check confirms eval-0 target untouched. Chat summary: 'No changes required before commit.' Report-only."
+        },
+        {
+          "text": "A concise chat summary was produced in addition to the full report file.",
+          "passed": true,
+          "evidence": "chat_summary.md exists, distinct from verification-report.md."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.875,
+        "passed": 7,
+        "failed": 1,
+        "total": 8,
+        "time_seconds": 273.3,
+        "tokens": 200798,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "A verification report file was written that scores module 5 against all 7 standards with an explicit per-standard verdict.",
+          "passed": true,
+          "evidence": "module05-review.md '## Coverage snapshot' table has 7 rows (Factual accuracy, Clarity/fluency, Depth, Anthropic+OpenAI parity, Interactivity, Tables/diagrams/animations, Role alignment) each with an assessment verdict."
+        },
+        {
+          "text": "Review scope covers the module's quiz.ts, lab.ts, and resources.ts/index.ts \u2014 not just the lesson files.",
+          "passed": true,
+          "evidence": "'Reviewed: `content/modules/module05/` (index, 5 lessons, quiz, lab, resources)'. B1 cites 'quiz.ts:122', B2 cites 'lab.ts:7' and 'lab.ts:31', M2 cites 'resources.ts:19'."
+        },
+        {
+          "text": "The absence of Anthropic/OpenAI code tabs in module 5 is addressed as a deliberate judgment (legitimately provider-neutral topic vs a standard-4 gap), not silently ignored.",
+          "passed": true,
+          "evidence": "S1: 'The module nails **model**-provider parity: the `init_chat_model(...)` one-string swap... which is the right call for a LangGraph-centric module. But **framework**-level parity is missing where it matters most' \u2014 frames neutrality as correct for the topic while flagging the naming gap."
+        },
+        {
+          "text": "Findings are ranked by severity (Blocker/Major/Minor/Polish) and each cites a specific file:line location.",
+          "passed": true,
+          "evidence": "Sections 'BLOCKING' (B1 lessons/02-...:125, B2 lab.ts:7/31), 'SHOULD-FIX' (S1), 'MINOR' (M1 lessons/05-...:125, M2 resources.ts:19). Uses Blocking/Should-fix/Minor rather than the exact Blocker/Major/Minor/Polish labels but is clearly severity-ranked with file:line."
+        },
+        {
+          "text": "Findings are weighted by learner impact, not padded with nitpicks.",
+          "passed": true,
+          "evidence": "Prioritized ('fix B1 and B2... and the module is shippable. S1 is the highest-value content improvement; M1/M2 are cleanup'); B2 notes it's a repo-wide pending condition, not a nitpick pile."
+        },
+        {
+          "text": "The mechanical checks.py script was run over the module.",
+          "passed": false,
+          "evidence": "No 'Mechanical pass'/checks.py section. The report does manual checks (URL resolution, quiz cross-reference validity, animation dispatch) but never runs or shows the mechanical checks.py script."
+        },
+        {
+          "text": "No content file under content/modules/ was edited.",
+          "passed": true,
+          "evidence": "Harness git check confirms eval-1 target untouched. Chat summary: 'I didn't change any content \u2014 flagging only, per the default.'"
+        },
+        {
+          "text": "A concise, prioritized chat summary was produced in addition to the full report.",
+          "passed": true,
+          "evidence": "chat_summary.md exists with Blocking/Should-fix/Minor sections and a strengths callout, distinct from module05-review.md."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.875,
+        "passed": 7,
+        "failed": 1,
+        "total": 8,
+        "time_seconds": 268.1,
+        "tokens": 178367,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Review scope is exactly lessons 03-tool-calling and 04-structured-outputs of module 1 \u2014 no other lessons or modules are reviewed.",
+          "passed": true,
+          "evidence": "'Files reviewed: 03-tool-calling.ts, 04-structured-outputs.ts'. Findings organized under 'Lesson 3' and 'Lesson 4' only; no other lessons/modules touched."
+        },
+        {
+          "text": "A fact-check log is present listing individual claims with a per-claim status of verified / contradicted / unverifiable.",
+          "passed": true,
+          "evidence": "'## How the volatile claims were verified' table lists individual claims with a 'Verified?' column (all '\u2705 Correct') and a per-claim 'Source finding'. All statuses are 'verified' (no contradicted/unverifiable used because it found nothing wrong)."
+        },
+        {
+          "text": "At least one volatile API claim (model ID, parameter behavior, tool-calling or structured-output API field/shape) was actually checked against a live or primary source, with the source cited.",
+          "passed": false,
+          "evidence": "The report claims 'I checked the moving parts against current official documentation (Anthropic Claude Platform docs, OpenAI API docs) and the Stanford HAI 2026 AI Index' but cites no URLs and shows no live fetch \u2014 sources are named only generically. Per grading guidance the live-source evidence bar is a fact-check log with cited URLs; that is absent here, so the process claim is not substantiated."
+        },
+        {
+          "text": "The review does not assert a claim is wrong merely because it could not be confirmed; unconfirmed claims are labeled unverifiable.",
+          "passed": true,
+          "evidence": "'No factual corrections required... nothing is factually wrong.' It asserts no claim is wrong. (Note: it also MISSED the OpenAI 'limits are the same' contradiction that the with_skill run caught, even endorsing the L230 answer as 'correctly says' \u2014 a quality miss not covered by this assertion.)"
+        },
+        {
+          "text": "Anthropic/OpenAI provider parity for these two lessons is explicitly evaluated (both providers represented where the topic is provider-specific).",
+          "passed": true,
+          "evidence": "'## Provider coverage assessment' evaluates each lesson: 'Lesson 3: Excellent. All three code blocks ship both dialects via `variants`...'; 'Lesson 4: Strong. Both primary code blocks... have both providers.'"
+        },
+        {
+          "text": "Standards 1 (factual accuracy) and 4 (provider parity) are given primary weight, per the user's stated emphasis.",
+          "passed": true,
+          "evidence": "'Focus (per request): **factual accuracy** and **Anthropic/OpenAI coverage being represented correctly**.' Report is structured around the verification table and a provider-coverage section."
+        },
+        {
+          "text": "Findings cite specific file:line locations and no content file was edited.",
+          "passed": true,
+          "evidence": "Findings cite 'Line 30', 'Line 395', 'lines 343-353/360-377', 'line 230', 'line 25'. Report-only: 'No factual corrections required. Optional polish...' NOTE: harness git shows the session's one content edit was to module01/lessons/03-tool-calling.ts by one of the two eval-2 runs (since reverted); this run's output shows no applied edits, so the edit cannot be attributed to it from the outputs \u2014 passed with that ambiguity noted."
+        },
+        {
+          "text": "A concise chat summary was produced in addition to the full report.",
+          "passed": true,
+          "evidence": "chat_summary.md exists with verdict, verified-claims list, and 3 polish items, distinct from fact-check-report.md."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 399.6667,
+        "stddev": 15.3011,
+        "min": 382.0,
+        "max": 408.7
+      },
+      "tokens": {
+        "mean": 212062.6667,
+        "stddev": 24351.5743,
+        "min": 189110,
+        "max": 237606
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.869,
+        "stddev": 0.0104,
+        "min": 0.857,
+        "max": 0.875
+      },
+      "time_seconds": {
+        "mean": 240.7333,
+        "stddev": 51.9689,
+        "min": 180.8,
+        "max": 273.3
+      },
+      "tokens": {
+        "mean": 249268.0,
+        "stddev": 103984.9228,
+        "min": 178367,
+        "max": 368639
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.13",
+      "time_seconds": "+158.9",
+      "tokens": "-37205"
+    }
+  },
+  "notes": [
+    "Pass-rate edge (+0.13) comes ENTIRELY from process rigor, not from finding more issues: every baseline miss was either 'no checks.py mechanical pass' (eval-0/eval-1) or 'fact-check cited sources by name without a live-source URL' (eval-2). The skill's value here is disciplined, repeatable method.",
+    "UNDERSTATED SKILL GAP (top iteration target): in eval-1 the baseline surfaced two Blocker-class integrity issues \u2014 a broken quiz cross-reference (lesson->quiz question #) and a dead lab starter-code path \u2014 that the with_skill run MISSED. The rubric steered the skilled run toward qualitative depth/provider analysis; neither checks.py nor the rubric explicitly hunts internal-reference integrity. No assertion tests blocker recall, so the benchmark does not penalize this. Fix: add cross-reference / dead-path / resource-URL-liveness checks (script + rubric).",
+    "REAL SKILL WIN (also uncaptured by assertions): in eval-2 the with_skill run caught a Major factual error at 04-structured-outputs.ts:88 ('limits are the same' is stale \u2014 OpenAI added minimum/maxLength/pattern etc. in 2025) that the baseline missed and explicitly endorsed as correct. The live-doc fact-check discipline paid off on the hardest standard.",
+    "Cost profile: with_skill averaged ~400s vs ~241s baseline (+160s) from live fact-checking + reading the exemplar/reference; tokens were actually LOWER (212k vs 249k), so the skill trades wall-time for accuracy without a token penalty.",
+    "Many assertions are non-discriminating (report-exists, file:line-cited, no-content-edit, chat-summary) \u2014 they pass in both configs. The only differentiating assertions are 'ran checks.py' and 'cited a live source'. Future evals should add discriminating assertions (e.g., blocker/integrity recall) to measure what actually separates the skill.",
+    "Watch for mild over-reach: on the exemplar (eval-0) the with_skill run raised 3 Minor precision items vs the baseline's 1 soft note. All were labeled Minor/Polish (no fabricated Blocker/Major, so the anti-nitpick rule held), but confirm in review these are genuine, not manufactured to look thorough."
+  ]
+}

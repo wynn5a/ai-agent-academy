@@ -1,0 +1,45 @@
+{
+  "expectations": [
+    {
+      "text": "A verification report file was written that scores module 5 against all 7 standards with an explicit per-standard verdict.",
+      "passed": true,
+      "evidence": "module05-review.md '## Coverage snapshot' table has 7 rows (Factual accuracy, Clarity/fluency, Depth, Anthropic+OpenAI parity, Interactivity, Tables/diagrams/animations, Role alignment) each with an assessment verdict."
+    },
+    {
+      "text": "Review scope covers the module's quiz.ts, lab.ts, and resources.ts/index.ts — not just the lesson files.",
+      "passed": true,
+      "evidence": "'Reviewed: `content/modules/module05/` (index, 5 lessons, quiz, lab, resources)'. B1 cites 'quiz.ts:122', B2 cites 'lab.ts:7' and 'lab.ts:31', M2 cites 'resources.ts:19'."
+    },
+    {
+      "text": "The absence of Anthropic/OpenAI code tabs in module 5 is addressed as a deliberate judgment (legitimately provider-neutral topic vs a standard-4 gap), not silently ignored.",
+      "passed": true,
+      "evidence": "S1: 'The module nails **model**-provider parity: the `init_chat_model(...)` one-string swap... which is the right call for a LangGraph-centric module. But **framework**-level parity is missing where it matters most' — frames neutrality as correct for the topic while flagging the naming gap."
+    },
+    {
+      "text": "Findings are ranked by severity (Blocker/Major/Minor/Polish) and each cites a specific file:line location.",
+      "passed": true,
+      "evidence": "Sections 'BLOCKING' (B1 lessons/02-...:125, B2 lab.ts:7/31), 'SHOULD-FIX' (S1), 'MINOR' (M1 lessons/05-...:125, M2 resources.ts:19). Uses Blocking/Should-fix/Minor rather than the exact Blocker/Major/Minor/Polish labels but is clearly severity-ranked with file:line."
+    },
+    {
+      "text": "Findings are weighted by learner impact, not padded with nitpicks.",
+      "passed": true,
+      "evidence": "Prioritized ('fix B1 and B2... and the module is shippable. S1 is the highest-value content improvement; M1/M2 are cleanup'); B2 notes it's a repo-wide pending condition, not a nitpick pile."
+    },
+    {
+      "text": "The mechanical checks.py script was run over the module.",
+      "passed": false,
+      "evidence": "No 'Mechanical pass'/checks.py section. The report does manual checks (URL resolution, quiz cross-reference validity, animation dispatch) but never runs or shows the mechanical checks.py script."
+    },
+    {
+      "text": "No content file under content/modules/ was edited.",
+      "passed": true,
+      "evidence": "Harness git check confirms eval-1 target untouched. Chat summary: 'I didn't change any content — flagging only, per the default.'"
+    },
+    {
+      "text": "A concise, prioritized chat summary was produced in addition to the full report.",
+      "passed": true,
+      "evidence": "chat_summary.md exists with Blocking/Should-fix/Minor sections and a strengths callout, distinct from module05-review.md."
+    }
+  ],
+  "summary": {"passed": 7, "failed": 1, "total": 8, "pass_rate": 0.875}
+}

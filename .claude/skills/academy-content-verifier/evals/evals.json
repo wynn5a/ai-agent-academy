@@ -1,0 +1,55 @@
+{
+  "skill_name": "academy-content-verifier",
+  "evals": [
+    {
+      "id": 0,
+      "name": "strong-single-lesson-no-false-findings",
+      "prompt": "Before I commit it, can you verify the sampling & streaming lesson in module 1 (content/modules/module01/lessons/02-sampling-and-streaming.ts) meets our quality standards? Tell me if it's good to ship.",
+      "expected_output": "A verification report scoped to that one lesson, scored against all 7 standards, reaching a clear ship recommendation. Because this lesson is the exemplar, the review should recognize it as strong and NOT manufacture Blocker/Major findings; any findings should be genuinely minor. A reviews/ report file plus a chat summary.",
+      "files": [],
+      "expectations": [
+        "A verification report file was written that scores the lesson against all 7 standards with an explicit per-standard verdict.",
+        "The review reaches a clear ship/no-ship recommendation.",
+        "No fabricated Blocker or Major finding is raised on this exemplar lesson; it is recognized as strong.",
+        "Any findings raised are genuinely Minor/Polish and cite a specific file:line reference.",
+        "The mechanical checks.py script was run.",
+        "No content file under content/modules/ was edited.",
+        "A concise chat summary was produced in addition to the full report."
+      ]
+    },
+    {
+      "id": 1,
+      "name": "whole-module-review-provider-judgment",
+      "prompt": "Review all of module 5 against our quality bar and write up what needs work before it's ready.",
+      "expected_output": "A module-scoped review covering the lessons AND quiz.ts/lab.ts/resources.ts/index.ts. Exercises judgment on provider coverage (module 5 has no Anthropic/OpenAI code tabs) and role alignment for a senior multi-agent topic. Report file + prioritized chat summary.",
+      "files": [],
+      "expectations": [
+        "A verification report file was written that scores module 5 against all 7 standards with an explicit per-standard verdict.",
+        "Review scope covers the module's quiz.ts, lab.ts, and resources.ts/index.ts, not just the lesson files.",
+        "The absence of Anthropic/OpenAI code tabs is addressed as a deliberate judgment (provider-neutral vs a standard-4 gap), not silently ignored.",
+        "Findings are ranked by severity and each cites a specific file:line location.",
+        "Findings are weighted by learner impact, not padded with nitpicks.",
+        "The mechanical checks.py script was run over the module.",
+        "No content file under content/modules/ was edited.",
+        "A concise, prioritized chat summary was produced in addition to the full report."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "subset-scope-factual-and-provider-emphasis",
+      "prompt": "Fact-check lessons 3 and 4 of module 1 and check their Anthropic/OpenAI coverage specifically — I care most about accuracy and both providers being represented correctly.",
+      "expected_output": "A review scoped to exactly those two lessons (03-tool-calling, 04-structured-outputs), weighted toward standards 1 (factual accuracy, with live-doc verification) and 4 (provider parity). Produces a fact-check log with verified/contradicted/unverifiable statuses and cited sources.",
+      "files": [],
+      "expectations": [
+        "Review scope is exactly lessons 03-tool-calling and 04-structured-outputs of module 1 — no other files reviewed.",
+        "A fact-check log lists individual claims with per-claim status of verified / contradicted / unverifiable.",
+        "At least one volatile API claim was actually checked against a live or primary source, with the source cited.",
+        "Unconfirmed claims are labeled unverifiable rather than asserted wrong.",
+        "Anthropic/OpenAI provider parity is explicitly evaluated for these two lessons.",
+        "Standards 1 and 4 are given primary weight per the user's emphasis.",
+        "Findings cite specific file:line locations and no content file was edited.",
+        "A concise chat summary was produced in addition to the full report."
+      ]
+    }
+  ]
+}
