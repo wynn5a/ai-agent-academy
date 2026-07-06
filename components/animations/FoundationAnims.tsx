@@ -1,7 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge, StepReveal, loopMotion } from "./primitives";
+import {
+  Stage,
+  Node,
+  FlowEdge,
+  StepReveal,
+  StepFade,
+  loopMotion,
+} from "./primitives";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- 1. The agent loop: LLM → tool call → result → LLM ---------- */
@@ -306,7 +313,159 @@ export function TokenStreamAnim() {
   );
 }
 
-/* ---------- 3. Temperature / sampling ---------- */
+/* ---------- 3. Token selection pipeline: logits → softmax → sample ---------- */
+const TS_TOKENS = ['"Paris"', '"paris"', '"The"', '"France"'];
+const TS_LOGITS = [4.2, 1.1, 0.3, -0.6];
+const TS_TEMP = 0.7;
+const TS_SCALED = TS_LOGITS.map((z) => z / TS_TEMP);
+function softmax(xs: number[]) {
+  const m = Math.max(...xs);
+  const exps = xs.map((x) => Math.exp(x - m));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map((e) => e / sum);
+}
+const TS_PROBS = softmax(TS_SCALED);
+const TS_WINNER = TS_PROBS.indexOf(Math.max(...TS_PROBS));
+const TS_STAGES = [
+  { label: "Logits", sub: "raw scores", color: "#a78bfa" },
+  { label: "÷ temperature", sub: "reshape", color: "#fbbf24" },
+  { label: "Softmax", sub: "→ probabilities", color: "#38bdf8" },
+  { label: "Sample", sub: "pick one", color: "#34d399" },
+  { label: "Append", sub: "next input", color: "#f87171" },
+];
+const TS_CAPTIONS = [
+  "the model's last layer outputs one unbounded real number per vocab token — a logit",
+  "divide every logit by temperature (T = 0.7 here) — this only reshapes the distribution",
+  "softmax exponentiates and normalizes: every logit becomes a probability, all summing to 100%",
+  "a sampling method (greedy, top_p, …) draws one token from this distribution",
+  "the picked token is appended to the sequence and fed back in to predict the next one",
+];
+const TS_XS = [8, 138, 268, 398, 528];
+
+export function TokenSelectionAnim() {
+  const { step } = useAnimPlayback();
+  return (
+    <Stage viewBox="0 0 640 300">
+      {TS_STAGES.map((s, i) => (
+        <StepReveal key={i} index={i} dim={1}>
+          <Node
+            x={TS_XS[i]}
+            y={14}
+            w={104}
+            h={44}
+            label={s.label}
+            sub={s.sub}
+            color={s.color}
+          />
+        </StepReveal>
+      ))}
+      {TS_XS.slice(0, -1).map((x, i) => (
+        <StepReveal key={i} index={i + 1} dim={1}>
+          <FlowEdge
+            d={`M ${x + 104} 36 H ${TS_XS[i + 1]}`}
+            color={TS_STAGES[i + 1].color}
+          />
+        </StepReveal>
+      ))}
+
+      <text
+        x={320}
+        y={80}
+        textAnchor="middle"
+        fill="#64748b"
+        fontSize={10.5}
+        fontFamily="monospace"
+      >
+        {TS_CAPTIONS[step]}
+      </text>
+
+      {TS_TOKENS.map((tok, i) => {
+        const y = 98 + i * 38;
+        const isWinner = i === TS_WINNER;
+        return (
+          <g key={i}>
+            <text
+              x={62}
+              y={y + 15}
+              textAnchor="end"
+              fill="#94a3b8"
+              fontSize={11}
+              fontFamily="monospace"
+            >
+              {tok}
+            </text>
+            {step <= 1 ? (
+              <text
+                x={70}
+                y={y + 15}
+                fill={step === 0 ? "#c4b5fd" : "#fcd34d"}
+                fontSize={12}
+                fontFamily="monospace"
+              >
+                {(step === 0 ? TS_LOGITS[i] : TS_SCALED[i]).toFixed(2)}
+              </text>
+            ) : (
+              <>
+                <rect x={70} y={y} width={200} height={20} rx={4} fill="#ffffff08" />
+                <motion.rect
+                  x={70}
+                  y={y}
+                  height={20}
+                  rx={4}
+                  fill={isWinner && step >= 3 ? "#34d399" : "#38bdf8"}
+                  fillOpacity={0.7}
+                  stroke={isWinner && step >= 3 ? "#34d399" : "transparent"}
+                  strokeWidth={1.5}
+                  initial={false}
+                  animate={{ width: 200 * TS_PROBS[i] }}
+                  transition={{ duration: 0.5 }}
+                />
+                <text
+                  x={280}
+                  y={y + 15}
+                  fill="#64748b"
+                  fontSize={10}
+                  fontFamily="monospace"
+                >
+                  {Math.round(TS_PROBS[i] * 100)}%
+                  {isWinner && step >= 3 ? "  ✓ sampled" : ""}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+
+      {step >= 4 && (
+        <StepFade opacity={1}>
+          <rect
+            x={55}
+            y={252}
+            width={530}
+            height={32}
+            rx={6}
+            fill="none"
+            stroke="#232f47"
+            strokeWidth={1.5}
+          />
+          <text
+            x={320}
+            y={272}
+            textAnchor="middle"
+            fill="#e2e8f0"
+            fontSize={11}
+            fontFamily="monospace"
+          >
+            …sequence so far + <tspan fill="#f87171">{TS_TOKENS[TS_WINNER]}</tspan>{" "}
+            → next forward pass predicts the token after it
+          </text>
+        </StepFade>
+      )}
+    </Stage>
+  );
+}
+
+/* ---------- 4. Temperature / sampling ---------- */
 const DIST = [
   { tok: '"Paris"', p0: 0.86, p1: 0.44 },
   { tok: '"paris"', p0: 0.08, p1: 0.22 },
@@ -396,7 +555,7 @@ export function TemperatureAnim() {
   );
 }
 
-/* ---------- 4. Context window fill + compaction ---------- */
+/* ---------- 5. Context window fill + compaction ---------- */
 const SEGS = [
   { label: "system", color: "#a78bfa", w: 70 },
   { label: "tools", color: "#34d399", w: 60 },
@@ -567,7 +726,7 @@ export function ContextWindowAnim() {
   );
 }
 
-/* ---------- 5. Tool calling handshake ---------- */
+/* ---------- 6. Tool calling handshake ---------- */
 const TC_STEPS = [
   { from: "app", text: "messages + tool schemas", y: 66 },
   {
@@ -642,7 +801,7 @@ export function ToolCallingAnim() {
   );
 }
 
-/* ---------- 6. ReAct pattern trace ---------- */
+/* ---------- 7. ReAct pattern trace ---------- */
 const REACT_ROWS = [
   {
     tag: "Thought",

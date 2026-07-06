@@ -12,7 +12,7 @@ import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { renderInline } from "@/lib/markdown";
 import type { CodeVariant, Provider } from "@/lib/types";
-import { setProviderPref, useProviderPref } from "@/lib/provider";
+import { PROVIDER_META, type ProviderPref } from "@/lib/provider";
 
 SyntaxHighlighter.registerLanguage("python", python);
 SyntaxHighlighter.registerLanguage("typescript", typescript);
@@ -20,14 +20,6 @@ SyntaxHighlighter.registerLanguage("javascript", javascript);
 SyntaxHighlighter.registerLanguage("bash", bash);
 SyntaxHighlighter.registerLanguage("json", json);
 SyntaxHighlighter.registerLanguage("yaml", yaml);
-
-const PROVIDER_META: Record<
-  "claude" | "openai",
-  { label: string; dot: string }
-> = {
-  claude: { label: "Claude", dot: "bg-[#d97757]" },
-  openai: { label: "OpenAI", dot: "bg-emerald-400" },
-};
 
 interface Tab {
   provider: "claude" | "openai";
@@ -53,7 +45,6 @@ export default function CodeBlock({
   variants?: CodeVariant[];
 }) {
   const [copied, setCopied] = useState(false);
-  const pref = useProviderPref();
 
   // A block becomes tabbed only when it ships alternative provider variants.
   const tabs: Tab[] | null = variants?.length
@@ -75,6 +66,11 @@ export default function CodeBlock({
         })),
       ]
     : null;
+
+  // Each block keeps its own tab selection — toggling one never moves another.
+  const [pref, setPref] = useState<ProviderPref>(
+    provider === "openai" ? "openai" : "claude",
+  );
 
   const active: Tab = tabs
     ? (tabs.find((t) => t.provider === pref) ?? tabs[0])
@@ -106,7 +102,7 @@ export default function CodeBlock({
                   key={t.provider}
                   role="tab"
                   aria-selected={isActive}
-                  onClick={() => setProviderPref(t.provider)}
+                  onClick={() => setPref(t.provider)}
                   className={clsx(
                     "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                     isActive

@@ -1,9 +1,13 @@
-import React from "react";
-import type { Section, CalloutKind } from "@/lib/types";
+"use client";
+
+import { useState } from "react";
+import clsx from "clsx";
+import type { Section, CalloutKind, ProviderTabPanel } from "@/lib/types";
 import { renderInline } from "@/lib/markdown";
 import CodeBlock from "./CodeBlock";
 import Exercise from "./Exercise";
 import ConceptAnimation from "./animations/ConceptAnimation";
+import { PROVIDER_META } from "@/lib/provider";
 
 const CALLOUT_STYLES: Record<
   CalloutKind,
@@ -46,6 +50,56 @@ const CALLOUT_STYLES: Record<
     icon: "◈",
   },
 };
+
+/** Renders a set of provider-specific panels (tables, callouts, paragraphs,
+ *  ...) behind the same Anthropic/OpenAI tab bar used by tabbed code blocks. */
+function TabGroup({ tabs }: { tabs: ProviderTabPanel[] }) {
+  // Local to this group — its own tab state, independent of every other block.
+  const [pref, setPref] = useState(tabs[0].provider);
+  const active = tabs.find((t) => t.provider === pref) ?? tabs[0];
+
+  return (
+    <div className="border-border my-6 overflow-hidden rounded-xl border">
+      <div className="border-border flex items-center border-b bg-white/[0.02] px-4 py-2">
+        <div
+          role="tablist"
+          aria-label="Provider"
+          className="flex items-center gap-1 rounded-lg bg-white/[0.04] p-0.5"
+        >
+          {tabs.map((t) => {
+            const isActive = t.provider === active.provider;
+            return (
+              <button
+                key={t.provider}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setPref(t.provider)}
+                className={clsx(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                  isActive
+                    ? "bg-white/10 text-slate-100"
+                    : "text-slate-500 hover:text-slate-300",
+                )}
+              >
+                <span
+                  className={clsx(
+                    "h-1.5 w-1.5 rounded-full",
+                    PROVIDER_META[t.provider].dot,
+                    !isActive && "opacity-40",
+                  )}
+                />
+                {t.label ?? PROVIDER_META[t.provider].label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="px-4">
+        <SectionRenderer sections={active.sections} />
+      </div>
+    </div>
+  );
+}
 
 export default function SectionRenderer({ sections }: { sections: Section[] }) {
   return (
@@ -150,6 +204,8 @@ export default function SectionRenderer({ sections }: { sections: Section[] }) {
                 </table>
               </div>
             );
+          case "tab-group":
+            return <TabGroup key={i} tabs={s.tabs} />;
           case "animation":
             return (
               <ConceptAnimation key={i} name={s.name} caption={s.caption} />

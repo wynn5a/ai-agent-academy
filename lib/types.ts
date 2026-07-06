@@ -4,16 +4,25 @@ export type CalloutKind =
   "info" | "tip" | "warning" | "danger" | "insight" | "career"; // ties a concept to what interviewers/hiring managers screen for
 
 /** Which LLM provider a code snippet targets. Blocks tagged "claude" or
- *  "openai" participate in the global provider toggle; "neutral" (default)
- *  renders as a plain single block. */
+ *  "openai" render as Anthropic/OpenAI tabs; "neutral" (default) renders as a
+ *  plain single block. */
 export type Provider = "claude" | "openai" | "neutral";
 
 export interface CodeVariant {
   provider: Exclude<Provider, "neutral">;
-  label?: string; // defaults to "Claude" / "OpenAI"
+  label?: string; // defaults to "Anthropic" / "OpenAI"
   language?: string; // defaults to the parent block's language
   code: string;
   explanation?: string;
+}
+
+/** One provider's panel inside a `tab-group` section — an arbitrary run of
+ *  sections (tables, callouts, paragraphs, ...) shown only when that
+ *  provider's tab is selected within that group. */
+export interface ProviderTabPanel {
+  provider: Exclude<Provider, "neutral">;
+  label?: string; // defaults to "Anthropic" / "OpenAI"
+  sections: Section[];
 }
 
 export type Section =
@@ -29,10 +38,16 @@ export type Section =
       explanation?: string; // shown below the block; markdown-lite
       /** Provider of the base `code` snippet (default "neutral"). */
       provider?: Provider;
-      /** Same snippet for other providers — renders as synced tabs. */
+      /** Same snippet for other providers — renders as per-block tabs. */
       variants?: CodeVariant[];
     }
   | { type: "table"; headers: string[]; rows: string[][] }
+  | {
+      type: "tab-group";
+      /** Same per-block Anthropic/OpenAI tabs as tabbed code blocks, but wraps
+       *  arbitrary sections (tables, callouts, paragraphs) per provider. */
+      tabs: ProviderTabPanel[];
+    }
   | { type: "animation"; name: AnimationName; caption?: string }
   | { type: "keypoints"; title?: string; points: string[] }
   | {
@@ -47,6 +62,7 @@ export type Section =
 export type AnimationName =
   | "agent-loop"
   | "token-stream"
+  | "token-selection"
   | "temperature"
   | "context-window"
   | "tool-calling"

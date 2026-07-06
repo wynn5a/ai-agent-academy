@@ -46,6 +46,15 @@ const REGISTRY: Record<AnimationName, Entry> = {
     h: 210,
     cycleMs: 8900, // last commit ~6.96s + cursor blink sequence (1.8s)
   },
+  "token-selection": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.TokenSelectionAnim),
+    ),
+    w: 640,
+    h: 300,
+    steps: 5,
+    stepMs: 2600,
+  },
   temperature: {
     Component: dynamic(() =>
       import("./FoundationAnims").then((m) => m.TemperatureAnim),

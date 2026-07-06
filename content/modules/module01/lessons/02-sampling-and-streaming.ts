@@ -3,28 +3,58 @@ import type { Lesson } from "@/lib/types";
 export const lesson02: Lesson = {
   slug: "sampling-and-streaming",
   title: "Controlling Generation: Sampling, Thinking & Streaming",
-  minutes: 35,
+  minutes: 38,
   summary:
-    "How a token actually gets picked — and how the dials changed. Classic sampling (temperature, top_p) still runs most of the industry, but 2026 frontier models replaced those knobs with adaptive thinking and an effort parameter. Streaming turns dead air into perceived speed.",
+    "How a token actually gets picked, step by step — logits, softmax, and the sampling parameters that shape the draw — and how the dials changed. Classic sampling (temperature, top_p) still runs most of the industry, but 2026 frontier models replaced those knobs with adaptive thinking and an effort parameter. Streaming turns dead air into perceived speed.",
   sections: [
     {
       type: "paragraph",
-      text: "At each step of generation, the model produces a probability distribution over its entire vocabulary for the next token. **Sampling parameters shape how a token gets picked from that distribution.**",
+      text: "At each step of generation, the model produces a probability distribution over its entire vocabulary for the next token. **Sampling parameters shape how a token gets picked from that distribution.** Before the knobs make sense, walk the pipeline that runs at every single step.",
+    },
+    {
+      type: "heading",
+      text: "Step by step: how one token gets picked",
+    },
+    {
+      type: "paragraph",
+      text: "The model's last layer doesn't output a token, and it doesn't output a probability either. It outputs one raw, unbounded real number per vocabulary token — a **logit**. `4.2` for `\"Paris\"`, `-0.6` for `\"France\"`. Logits can be negative, they don't sum to anything meaningful, and a logit of `4.2` on its own tells you nothing except that it's bigger than the others. They're a ranking, not a distribution — yet.",
+    },
+    {
+      type: "paragraph",
+      text: "**Softmax** is the function that turns that vector of logits into an actual probability distribution: exponentiate every logit (which makes everything positive), then divide each by the sum of all the exponentials, so every value lands between 0 and 1 and the whole vocabulary sums to exactly 100%.",
+    },
+    {
+      type: "code",
+      language: "text",
+      title: "the softmax formula",
+      code: `P(token_i) = exp(logit_i) / Σⱼ exp(logit_j)`,
+      explanation:
+        "exp() amplifies gaps — a logit 2 higher than another becomes ~7.4× more probable (e² ≈ 7.39) after softmax. That's why the output distribution is often much more sharply peaked than the raw logits looked.",
+    },
+    {
+      type: "animation",
+      name: "token-selection",
+      caption:
+        "The full pipeline for one token: logits → scale by temperature → softmax → sample → append — then the whole model runs again for the next position.",
+    },
+    {
+      type: "heading",
+      text: "The knobs: temperature and top_p",
+    },
+    {
+      type: "list",
+      items: [
+        "**temperature**: scales the logits before softmax (divides them, technically — the animation above uses T=0.7). Near 0 → almost always the top token (near-deterministic, but not perfectly — GPU nondeterminism and ties remain). High → more diverse, more creative, more wrong. Ranges vary by provider (0–2 on OpenAI; 0–1 on Anthropic models that still accept it).",
+        "**top_p (nucleus sampling)**: sample only from the smallest set of tokens whose cumulative probability ≥ p. `top_p=0.9` ignores the long tail entirely.",
+        "**Adjust one, not both.** They interact multiplicatively and become impossible to reason about together. Pick temperature as your primary dial.",
+        "**max_tokens** is a hard output cap, not a target — the model doesn't know it exists. Set it as a safety rail against runaway generation and check `stop_reason` for `max_tokens` to detect truncation.",
+      ],
     },
     {
       type: "animation",
       name: "temperature",
       caption:
         "Low temperature sharpens the distribution toward the top token; high temperature flattens it, letting unlikely tokens through.",
-    },
-    {
-      type: "list",
-      items: [
-        "**temperature**: scales the logits before softmax. Near 0 → almost always the top token (near-deterministic, but not perfectly — GPU nondeterminism and ties remain). High → more diverse, more creative, more wrong. Ranges vary by provider (0–2 on OpenAI; 0–1 on Anthropic models that still accept it).",
-        "**top_p (nucleus sampling)**: sample only from the smallest set of tokens whose cumulative probability ≥ p. `top_p=0.9` ignores the long tail entirely.",
-        "**Adjust one, not both.** They interact multiplicatively and become impossible to reason about together. Pick temperature as your primary dial.",
-        "**max_tokens** is a hard output cap, not a target — the model doesn't know it exists. Set it as a safety rail against runaway generation and check `stop_reason` for `max_tokens` to detect truncation.",
-      ],
     },
     {
       type: "callout",
@@ -38,7 +68,15 @@ export const lesson02: Lesson = {
     },
     {
       type: "paragraph",
-      text: "Anthropic's current frontier models (Claude Sonnet 5, Opus 4.7 and later) **no longer accept** `temperature`, `top_p`, or `top_k` — sending any of them returns a 400. The control surface moved up a level: instead of shaping the token distribution yourself, you tell the model how hard to work. Two parameters do that: **adaptive thinking** lets the model decide when and how much to reason before answering, and **effort** scales how much total work (thinking, tool calls, output) it spends.",
+      text: "Anthropic's Claude Opus 4.7 and 4.8 reject `temperature`, `top_p`, and `top_k` outright — including any one of them in a request returns a 400, even the model's own default value. Claude Sonnet 5 is a notch more lenient: omitting the parameter, or passing its default, is accepted; only a **non-default** value 400s. All three also drop the old fixed-budget shape — `thinking: {\"type\": \"enabled\", \"budget_tokens\": N}` now 400s — leaving a single on-state: `thinking: {\"type\": \"adaptive\"}`.",
+    },
+    {
+      type: "paragraph",
+      text: 'The control surface moved up a level: instead of shaping the token distribution yourself, you tell the model how hard to work. **Adaptive thinking** lets the model decide when and how much to reason before answering; **effort** — set inside `output_config`, defaulting to `"high"` — scales how much total work (thinking, tool calls, output) it spends, from `low` up to `max`. One default worth knowing: leave `thinking` out of the request entirely and Sonnet 5 runs adaptive automatically, while Opus 4.7/4.8 run with **no thinking at all** — set `thinking: {"type": "adaptive"}` explicitly if you want reasoning on the Opus tier.',
+    },
+    {
+      type: "paragraph",
+      text: "OpenAI's reasoning models followed the same path from their own starting point. `o1`, `o3`, `o4-mini`, and the GPT-5 series reject `temperature`, `top_p`, `presence_penalty`, `frequency_penalty`, and a few other sampling-adjacent fields once reasoning is active — the API error is explicit: *\"Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported.\"* In their place, `reasoning_effort` (Chat Completions) or `reasoning: {\"effort\": ...}` (Responses API) controls how much internal reasoning happens, with values from `\"minimal\"`/`\"none\"` up to `\"high\"`/`\"xhigh\"` depending on model version. Unlike Anthropic's blanket removal, OpenAI's rule isn't fixed per model family — some later GPT-5.x point releases (e.g. GPT-5.2 defaulting to `reasoning_effort: \"none\"`) reintroduced `temperature` support once reasoning is explicitly dialed down, so treat 'does this model accept temperature' as a **per-version** question you check in the docs, not a permanent per-family rule.",
     },
     {
       type: "code",
@@ -48,29 +86,29 @@ export const lesson02: Lesson = {
     model="claude-sonnet-5",
     max_tokens=16000,
     thinking={"type": "adaptive"},        # model decides when/how much to reason
-    output_config={"effort": "medium"},   # low | medium | high (some models add xhigh/max)
+    output_config={"effort": "medium"},   # low | medium | high | xhigh | max (default: "high")
     messages=[{"role": "user", "content": "Plan the refactor step by step."}],
 )
 
 for block in resp.content:
     if block.type == "thinking":
-        pass          # reasoning summary (visibility is opt-in via display settings)
+        pass          # empty by default (display="omitted") — pass display="summarized" for a readable summary
     elif block.type == "text":
         print(block.text)`,
       explanation:
-        "Responses can now contain **thinking blocks** alongside text. Two rules: thinking is billed as output tokens whether or not you display it, and in multi-turn conversations you resend thinking blocks **verbatim** like any other assistant content — the same own-the-array discipline from Lesson 1. Effort is the cost/quality lever: low for routine extraction, high for hard reasoning.",
+        "Responses can now contain **thinking blocks** alongside text. Two rules: thinking is billed as output tokens whether or not you display it, and in multi-turn conversations you resend thinking blocks **verbatim** like any other assistant content — the same own-the-array discipline from Lesson 1. Effort is the cost/quality lever: `low` for routine extraction, `high` (the default) for most work, `xhigh`/`max` for the hardest agentic tasks.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
           code: `resp = client.responses.create(
     model="gpt-5.5",
-    reasoning={"effort": "medium"},   # low | medium | high | xhigh
+    reasoning={"effort": "medium"},   # minimal | low | medium | high | xhigh
     input=[{"role": "user", "content": "Plan the refactor step by step."}],
 )
 print(resp.output_text)   # reasoning happens internally; you get the answer`,
           explanation:
-            "OpenAI's reasoning models likewise reject `temperature`; depth is a single top-level `reasoning={\"effort\": ...}` parameter rather than Anthropic's `thinking` + `output_config` pair, and the reasoning itself stays internal instead of arriving as content blocks.",
+            "OpenAI's reasoning models reject (or pin to their default) `temperature` the same way once reasoning is active; depth is a single top-level `reasoning={\"effort\": ...}` parameter on the Responses API (`reasoning_effort` on Chat Completions) rather than Anthropic's `thinking` + `output_config` pair, and the reasoning itself stays internal instead of arriving as content blocks. Exact support drifts by sub-version — some later GPT-5.x releases re-accept `temperature` once effort is explicitly set to a minimal level — so check the model's current docs rather than assuming the rule is fixed forever.",
         },
       ],
     },
@@ -80,7 +118,7 @@ print(resp.output_text)   # reasoning happens internally; you get the answer`,
       prompt:
         "You set `temperature=0.7` on a request to `claude-sonnet-5` because a blog post from 2024 said creative tasks want higher temperature. What happens, and what should you do instead?",
       answer:
-        'The API rejects the request with a **400** — current frontier Claude models removed `temperature`/`top_p`/`top_k` entirely. For output-style control you now use prompting (describe the variety you want), and for how hard the model works you use `output_config: {"effort": ...}` with adaptive thinking. Older models (and most other providers) still accept sampling parameters — always check the model\'s docs rather than assuming the knobs are universal.',
+        'The API rejects the request with a **400** — Sonnet 5 accepts `temperature` only at its default value (or omitted); a non-default `0.7` doesn\'t qualify. (Opus 4.7/4.8 are stricter still: they reject the field even at the default.) For output-style control you now use prompting (describe the variety you want), and for how hard the model works you use `output_config: {"effort": ...}` with adaptive thinking. Older models (and most other providers) still accept sampling parameters — always check the model\'s docs rather than assuming the knobs are universal.',
     },
     {
       type: "heading",
@@ -88,53 +126,138 @@ print(resp.output_text)   # reasoning happens internally; you get the answer`,
     },
     {
       type: "paragraph",
-      text: "Every response carries a `stop_reason`, and production code **switches on it before reading content** — most silent agent failures trace back to code that assumed `end_turn`. Memorize the taxonomy; interviewers use it as a completeness check when you whiteboard a loop.",
+      text: "Every provider tells you why generation ended, and production code **switches on that field before reading content** — most silent agent failures trace back to code that assumed the happy path. But the field name, its possible values, and even which object it lives on are provider-specific and API-specific. Anthropic has one field on one API; OpenAI has two different mechanisms depending on which API you call. Learn both — interviewers use this as a completeness check when you whiteboard a loop.",
     },
     {
-      type: "table",
-      headers: ["stop_reason", "Meaning", "What your code does"],
-      rows: [
-        [
-          "`end_turn`",
-          "Model finished naturally",
-          "Read the content; the happy path",
-        ],
-        [
-          "`max_tokens`",
-          "Hit *your* output cap mid-thought",
-          "Output is truncated — raise the cap, stream, or treat as incomplete. Never parse truncated JSON.",
-        ],
-        [
-          "`tool_use`",
-          "Model is requesting tools",
-          "Execute them, append results, loop (Lesson 3)",
-        ],
-        [
-          "`stop_sequence`",
-          "Hit a custom stop string you configured",
-          "Expected if you set one; check which via `stop_sequence`",
-        ],
-        [
-          "`pause_turn`",
-          "A server-side tool loop paused (long web search etc.)",
-          "Append the assistant turn and re-send to resume — don't add a 'continue' message",
-        ],
-        [
-          "`refusal`",
-          "Model or safety layer declined (HTTP 200!)",
-          "Don't loop or blind-retry; `stop_details` carries the category. Surface or route to a fallback.",
-        ],
-        [
-          "`model_context_window_exceeded`",
-          "Conversation no longer fits the window",
-          "Not retryable as-is — truncate or summarize history first",
-        ],
+      type: "tab-group",
+      tabs: [
+        {
+          provider: "claude",
+          sections: [
+            {
+              type: "table",
+              headers: ["stop_reason", "Meaning", "What your code does"],
+              rows: [
+                [
+                  "`end_turn`",
+                  "Model finished naturally",
+                  "Read the content; the happy path",
+                ],
+                [
+                  "`max_tokens`",
+                  "Hit *your* output cap mid-thought",
+                  "Output is truncated — raise the cap, stream, or treat as incomplete. Never parse truncated JSON.",
+                ],
+                [
+                  "`tool_use`",
+                  "Model is requesting tools",
+                  "Execute them, append results, loop (Lesson 3)",
+                ],
+                [
+                  "`stop_sequence`",
+                  "Hit a custom stop string you configured",
+                  "Expected if you set one; check which via `stop_sequence`",
+                ],
+                [
+                  "`pause_turn`",
+                  "A server-side tool loop paused (long web search etc.)",
+                  "Append the assistant turn and re-send to resume — don't add a 'continue' message",
+                ],
+                [
+                  "`refusal`",
+                  "Model or safety layer declined (HTTP 200!)",
+                  "Don't loop or blind-retry; `stop_details` carries the category. Surface or route to a fallback.",
+                ],
+                [
+                  "`model_context_window_exceeded`",
+                  "Conversation no longer fits the window",
+                  "Not retryable as-is — truncate or summarize history first",
+                ],
+              ],
+            },
+            {
+              type: "callout",
+              kind: "warning",
+              text: "The two everyone forgets on Anthropic: a **refusal is a 200**, so exception handling never sees it — only a `stop_reason` check does. And `max_tokens` truncation is silent — downstream JSON parsing fails mysteriously unless you check for it at the source. `stop_details` is populated only when `stop_reason` is `refusal`; it's `null` otherwise, so guard before reading it.",
+            },
+          ],
+        },
+        {
+          provider: "openai",
+          sections: [
+            {
+              type: "paragraph",
+              text: 'OpenAI doesn\'t have a field called `stop_reason` at all, and its two APIs don\'t agree with each other. **Chat Completions** puts a `finish_reason` string on each `choice`. The **Responses API** instead puts a top-level `status` on the whole response, and when that status is `"incomplete"` you drill into `incomplete_details.reason` for the specifics — there is no `finish_reason` field on a Responses API call.',
+            },
+            {
+              type: "table",
+              headers: [
+                "finish_reason (Chat Completions)",
+                "Meaning",
+                "What your code does",
+              ],
+              rows: [
+                [
+                  "`stop`",
+                  "Model hit a natural stop or your `stop` sequence",
+                  "Read `message.content`; the happy path",
+                ],
+                [
+                  "`length`",
+                  "Hit `max_tokens` mid-generation",
+                  "Output is truncated — raise the cap or treat as incomplete. Never parse truncated JSON.",
+                ],
+                [
+                  "`tool_calls`",
+                  "Model wants to call one or more tools",
+                  "Execute them, append results, loop (Lesson 3)",
+                ],
+                [
+                  "`content_filter`",
+                  "Output withheld or truncated by OpenAI's moderation layer",
+                  "Can be an HTTP 200 with partial or empty content — check this before assuming a bug",
+                ],
+                [
+                  "`function_call` (deprecated)",
+                  "Legacy predecessor to `tool_calls`",
+                  "Migrate to `tool_calls`; still returned by some older models",
+                ],
+              ],
+            },
+            {
+              type: "table",
+              headers: ["status (Responses API)", "Meaning", "What your code does"],
+              rows: [
+                [
+                  "`completed`",
+                  "Response finished normally",
+                  "Read `output`; the happy path",
+                ],
+                [
+                  "`incomplete`",
+                  "Stopped early — check `incomplete_details.reason` (e.g. `max_output_tokens`)",
+                  "Can fire before any visible text if reasoning tokens ate the whole budget — raise `max_output_tokens` and give reasoning models headroom",
+                ],
+                [
+                  "`in_progress` / `queued`",
+                  "Still running (streaming, or created with `background: true`)",
+                  "Poll or stream until a terminal status arrives",
+                ],
+                [
+                  "`failed`",
+                  "Request errored server-side",
+                  "Not generally retryable as-is — inspect the error detail on the response",
+                ],
+              ],
+            },
+            {
+              type: "callout",
+              kind: "warning",
+              text: "The Responses API has **no dedicated status for tool calls** — when the model wants one, `status` is still `completed` and you instead find an `output` item of type `function_call`; scan `output` for that type rather than branching on `status`. And OpenAI's refusal signal isn't a stop value on either API: on Chat Completions it's a `refusal` string field on the assistant message, and on the Responses API it's a `refusal`-typed content part inside `output` — both alongside a `200`, so structured-output code must check for `refusal` before trying to parse the response as your schema.",
+            },
+          ],
+        },
       ],
-    },
-    {
-      type: "callout",
-      kind: "warning",
-      text: "The two everyone forgets: a **refusal is a 200**, so exception handling never sees it — only a `stop_reason` check does. And `max_tokens` truncation is silent — downstream JSON parsing fails mysteriously unless you check for it at the source. `stop_details` is populated only when `stop_reason` is `refusal`; it's `null` otherwise, so guard before reading it.",
     },
     {
       type: "heading",
@@ -304,8 +427,8 @@ for event in stream:
       type: "keypoints",
       points: [
         "Sampling picks from a probability distribution; temperature scales it, top_p truncates it. Where both exist, tune one.",
-        "2026 frontier Claude models removed sampling params (400 if sent) — control is adaptive thinking + `output_config.effort`.",
-        "Switch on `stop_reason` before reading content: `end_turn`, `max_tokens`, `tool_use`, `pause_turn`, `refusal` (an HTTP 200!), `model_context_window_exceeded`.",
+        "Claude Opus 4.7/4.8 reject sampling params outright; Sonnet 5 rejects only non-default values — control shifted to adaptive thinking + `output_config.effort` (default `\"high\"`).",
+        "Switch on the stop field before reading content — but the field differs by provider: Anthropic's `stop_reason` (`end_turn`, `max_tokens`, `tool_use`, `pause_turn`, `refusal`, `model_context_window_exceeded`); OpenAI Chat Completions' `finish_reason` (`stop`, `length`, `tool_calls`, `content_filter`); OpenAI Responses API's `status` + `incomplete_details.reason`. A refusal is always a 200, and on OpenAI it's not a stop value at all — it's a `refusal` field/content part on the message.",
         "Streamed tool arguments arrive as `input_json_delta` fragments — accumulate per block index, parse only at `content_block_stop`.",
         "Streaming = SSE deltas; time-to-first-token is the UX metric that matters.",
         "Always capture the final usage/message object after a stream completes.",
