@@ -55,15 +55,17 @@ export const lesson05: Lesson = {
       code: `import random, time
 import anthropic
 
-RETRYABLE = (anthropic.RateLimitError, anthropic.APIStatusError,
-             anthropic.APIConnectionError, anthropic.APITimeoutError)
+RETRYABLE = (anthropic.RateLimitError, anthropic.OverloadedError,
+             anthropic.InternalServerError, anthropic.APIConnectionError,
+             anthropic.APITimeoutError)
 
 def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
     for attempt in range(max_retries + 1):
         try:
             return fn()
-        except anthropic.BadRequestError:
-            raise                       # 400 = your bug. Never retry.
+        except (anthropic.BadRequestError, anthropic.AuthenticationError,
+                 anthropic.PermissionDeniedError):
+            raise                       # 400/401/403 = your bug or creds. Never retry.
         except RETRYABLE as e:
             if attempt == max_retries:
                 raise
@@ -81,15 +83,16 @@ def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
           code: `import random, time
 import openai
 
-RETRYABLE = (openai.RateLimitError, openai.APIStatusError,
+RETRYABLE = (openai.RateLimitError, openai.InternalServerError,
              openai.APIConnectionError, openai.APITimeoutError)
 
 def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
     for attempt in range(max_retries + 1):
         try:
             return fn()
-        except openai.BadRequestError:
-            raise                       # 400 = your bug. Never retry.
+        except (openai.BadRequestError, openai.AuthenticationError,
+                 openai.PermissionDeniedError):
+            raise                       # 400/401/403 = your bug or creds. Never retry.
         except RETRYABLE as e:
             if attempt == max_retries:
                 raise
