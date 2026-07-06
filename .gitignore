@@ -10,3 +10,6 @@ next-env.d.ts
 
 # local CodeGraph index
 .codegraph/
+
+# local skill eval run output (artifacts regenerate on each run)
+.claude/skills/*-workspace/
