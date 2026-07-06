@@ -43,8 +43,8 @@ const REGISTRY: Record<AnimationName, Entry> = {
       import("./FoundationAnims").then((m) => m.TokenStreamAnim),
     ),
     w: 640,
-    h: 200,
-    cycleMs: 5800, // last token: 8 × 0.35s stagger + 2.8s flight
+    h: 210,
+    cycleMs: 8900, // last commit ~6.96s + cursor blink sequence (1.8s)
   },
   temperature: {
     Component: dynamic(() =>

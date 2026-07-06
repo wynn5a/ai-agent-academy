@@ -116,13 +116,37 @@ const TOKENS = [
   " waits",
   "…",
 ];
+// seconds: one chip's flight time from model to client, and the gap
+// between successive chips departing (several overlap in flight at once,
+// same as a real token stream). Slow enough to read each word as it lands.
+const FLIGHT_S = 1.6;
+const STAGGER_S = 0.7;
+// monospace px/char for the "rendered" sentence building up at the client —
+// independent of the flight chips' own (larger, padded) pill width.
+const CHAR_W = 7.2;
+const RESPONSE_X = 66;
+
+// cumulative layout: each token's flight-chip width and its x offset within
+// the accumulating response line, so the two stay in the same left-to-right
+// order even though they're drawn at different scales.
+let charsSoFar = 0;
+const TOKEN_LAYOUT = TOKENS.map((t) => {
+  const responseX = RESPONSE_X + charsSoFar * CHAR_W;
+  charsSoFar += t.length;
+  return { text: t, chipWidth: t.length * 7 + 14, responseX };
+});
+const RESPONSE_END_X = RESPONSE_X + charsSoFar * CHAR_W;
+
 export function TokenStreamAnim() {
   const { playing } = useAnimPlayback();
+  const lastCommitDelay =
+    (TOKEN_LAYOUT.length - 1) * STAGGER_S + FLIGHT_S * 0.85;
+
   return (
-    <Stage viewBox="0 0 640 200">
+    <Stage viewBox="0 0 640 210">
       <Node
         x={30}
-        y={60}
+        y={46}
         w={130}
         h={70}
         label="Model"
@@ -131,25 +155,47 @@ export function TokenStreamAnim() {
       />
       <Node
         x={480}
-        y={60}
+        y={46}
         w={130}
         h={70}
         label="Client"
         sub="renders"
         color="#38bdf8"
       />
-      <FlowEdge d="M 160 95 H 480" color="#38bdf8" />
-      {TOKENS.map((t, i) => (
+      <FlowEdge d="M 160 81 H 480" color="#38bdf8" />
+
+      {/* first chip only: call out time-to-first-token */}
+      <motion.text
+        x={320}
+        y={26}
+        textAnchor="middle"
+        fill="#34d399"
+        fontSize={10.5}
+        fontFamily="monospace"
+        {...loopMotion(
+          playing,
+          {
+            animate: { opacity: [0, 1, 1, 0] },
+            transition: { duration: 1.2, times: [0, 0.25, 0.8, 1] },
+          },
+          { opacity: 0 },
+        )}
+      >
+        first token arrives → perceived latency starts here
+      </motion.text>
+
+      {/* flying chips: one SSE delta each, model → client */}
+      {TOKEN_LAYOUT.map((tok, i) => (
         <motion.g
           key={i}
           {...loopMotion(
             playing,
             {
-              animate: { opacity: [0, 1, 1, 0], x: [0, 290] },
+              animate: { opacity: [0, 1, 1, 0], x: [0, 300] },
               transition: {
-                duration: 2.8,
-                times: [0, 0.1, 0.9, 1],
-                delay: i * 0.35,
+                duration: FLIGHT_S,
+                times: [0, 0.12, 0.85, 1],
+                delay: i * STAGGER_S,
                 ease: "linear",
               },
             },
@@ -158,8 +204,8 @@ export function TokenStreamAnim() {
         >
           <rect
             x={165}
-            y={78}
-            width={t.length * 7 + 14}
+            y={69}
+            width={tok.chipWidth}
             height={24}
             rx={6}
             fill="#38bdf81f"
@@ -167,27 +213,94 @@ export function TokenStreamAnim() {
             strokeOpacity={0.4}
           />
           <text
-            x={172 + (t.length * 7) / 2}
-            y={94}
+            x={165 + tok.chipWidth / 2}
+            y={85}
             textAnchor="middle"
             fill="#7dd3fc"
             fontSize={11}
             fontFamily="monospace"
           >
-            {t.trim() || "·"}
+            {tok.text.trim() || "·"}
           </text>
         </motion.g>
       ))}
+
+      {/* the client "renders incrementally": each token is appended to a
+          growing response line the moment its chip lands, and stays put —
+          this is the part a fire-and-forget chip animation can't show. */}
+      <rect
+        x={55}
+        y={140}
+        width={530}
+        height={40}
+        rx={8}
+        fill="none"
+        stroke="#232f47"
+        strokeWidth={1.5}
+      />
+      {TOKEN_LAYOUT.map((tok, i) => (
+        <motion.text
+          key={i}
+          x={tok.responseX}
+          y={165}
+          xmlSpace="preserve"
+          fill="#e2e8f0"
+          fontSize={12}
+          fontFamily="monospace"
+          {...loopMotion(
+            playing,
+            {
+              animate: { opacity: [0, 1] },
+              transition: {
+                duration: 0.3,
+                delay: i * STAGGER_S + FLIGHT_S * 0.85,
+              },
+            },
+            { opacity: 0 },
+          )}
+        >
+          {tok.text}
+        </motion.text>
+      ))}
+      {/* cursor: solid while text is still landing, blinks a couple of
+          times once the stream completes, then rests hidden */}
+      <motion.rect
+        x={RESPONSE_END_X + 2}
+        y={153}
+        width={2}
+        height={16}
+        fill="#7dd3fc"
+        {...loopMotion(
+          playing,
+          {
+            animate: { opacity: [1, 1, 0, 1, 0, 1, 0] },
+            transition: {
+              duration: lastCommitDelay + 1.8,
+              times: [
+                0,
+                lastCommitDelay / (lastCommitDelay + 1.8),
+                (lastCommitDelay + 0.3) / (lastCommitDelay + 1.8),
+                (lastCommitDelay + 0.6) / (lastCommitDelay + 1.8),
+                (lastCommitDelay + 0.9) / (lastCommitDelay + 1.8),
+                (lastCommitDelay + 1.2) / (lastCommitDelay + 1.8),
+                1,
+              ],
+            },
+          },
+          { opacity: 0 },
+        )}
+      />
+
       <text
         x={320}
-        y={165}
+        y={195}
         textAnchor="middle"
         fill="#64748b"
-        fontSize={11}
+        fontSize={10.5}
         fontFamily="monospace"
       >
         server-sent events: data: {"{"}&quot;delta&quot;: &quot;…&quot;{"}"} —
-        render as they arrive
+        each one is appended, not replaced
       </text>
     </Stage>
   );

@@ -114,7 +114,11 @@ export function loopMotion(
   rest: TargetAndTransition,
 ) {
   return {
-    initial: false as const,
+    // an explicit pose (not `false`) so Replay — which remounts the
+    // component via a new `key` while `playing` is already true — still
+    // transitions from `rest` instead of snapping straight to the animate
+    // keyframes' end state.
+    initial: rest,
     animate: playing ? active.animate : rest,
     transition: playing ? active.transition : { duration: 0.3 },
   };
