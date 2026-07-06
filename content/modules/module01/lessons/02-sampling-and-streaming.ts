@@ -265,7 +265,65 @@ print(resp.output_text)   # reasoning happens internally; you get the answer`,
     },
     {
       type: "paragraph",
-      text: "Without streaming you wait for the full completion before showing anything — for a long answer that's many seconds of dead air. With `stream=True` the API returns **server-sent events (SSE)**, delivering tokens as they're generated. Time-to-first-token becomes your perceived latency, which is often 10× better than time-to-full-response.",
+      text: "Without streaming, the client sends one request and blocks until the model has generated the *entire* completion — for a long answer that's many seconds of dead air. Streaming flips this: the API holds the HTTP response open and pushes tokens to the client as they're produced, over **Server-Sent Events (SSE)**. Time-to-first-token, not time-to-full-response, becomes the latency the user actually feels — often a 10× improvement in perceived speed for the same total generation time.",
+    },
+    {
+      type: "heading",
+      text: "Why SSE — not a plain response, not a WebSocket",
+    },
+    {
+      type: "paragraph",
+      text: "SSE is a W3C standard (part of the HTML spec) for server-to-client streaming over an ordinary HTTP connection. The server replies with `Content-Type: text/event-stream` and, instead of writing one body and closing, holds the connection open and emits a sequence of UTF-8 text **events** — each an `event:`/`data:` block terminated by a blank line — until it's finished. It's deliberately minimal: one direction (server → client), text only, carried by the same HTTP request you already made.",
+    },
+    {
+      type: "paragraph",
+      text: "Contrast that with a **plain HTTP request**, which is all-or-nothing: the client blocks until the full response body has arrived, then processes it. Even when chunked transfer encoding moves the bytes in pieces underneath, an ordinary client hands your code the body only once it's complete — so you're back to dead air. SSE is that same streamed HTTP response *plus* a thin framing protocol (typed events with explicit boundaries), which is exactly what lets the client parse and render each token the moment it lands instead of waiting for the last byte.",
+    },
+    {
+      type: "paragraph",
+      text: "A **WebSocket** starts as an HTTP request but then performs an `Upgrade` handshake that switches the connection to a separate, full-duplex protocol (`ws://`) where either side can send at any time. That bidirectionality is precisely what token streaming *doesn't* need: the interaction is send-one-prompt, stream-one-response. Reaching for WebSockets here buys you connection state, heartbeats, and reconnection logic to manage — plus infrastructure (corporate proxies, CDNs, load balancers) that frequently mishandles the protocol upgrade. SSE's unidirectional shape matches the request-then-response-stream shape of an API call, and because it stays plain HTTP, your bearer-token auth, proxies, retries, and request logging all keep working unchanged. That fit is why every major LLM provider streams over SSE rather than WebSockets.",
+    },
+    {
+      type: "table",
+      headers: ["", "Plain HTTP", "SSE", "WebSocket"],
+      rows: [
+        [
+          "**Direction**",
+          "Request → one response",
+          "Server → client stream",
+          "Full-duplex (both ways)",
+        ],
+        [
+          "**Connection**",
+          "Opens, one body, closes/reused",
+          "One long-lived HTTP response",
+          "HTTP `Upgrade` → persistent `ws://` socket",
+        ],
+        [
+          "**Protocol**",
+          "HTTP",
+          "HTTP + `text/event-stream` framing",
+          "Own frame protocol after the handshake",
+        ],
+        [
+          "**Fits token streaming?**",
+          "No — you wait for the whole answer",
+          "Yes — the industry default",
+          "Overkill — bidirectional you don't use",
+        ],
+        [
+          "**Auth & infra**",
+          "Works everywhere",
+          "Works everywhere (it's just HTTP)",
+          "Can break through proxies/CDNs/firewalls",
+        ],
+      ],
+    },
+    {
+      type: "callout",
+      kind: "insight",
+      title: "Two senior nuances",
+      text: "Over **HTTP/1.1**, browsers cap concurrent connections at ~6 per domain, so many open SSE streams to one host can starve other requests — **HTTP/2** multiplexes them over a single connection and makes the limit a non-issue (relevant when your *own* app fans out streams, less so for a single API call). And the SDK's `stream=True` isn't magic: the wire is always SSE regardless of language: the `messages.stream()` / `responses.create(stream=True)` helper is just parsing those `text/event-stream` frames into typed events for you (next section shows the raw frames).",
     },
     {
       type: "animation",
@@ -276,26 +334,34 @@ print(resp.output_text)   # reasoning happens internally; you get the answer`,
     {
       type: "code",
       language: "python",
-      title: "streaming with both SDKs",
-      code: `# Anthropic
-with client.messages.stream(
+      title: "streaming a text response",
+      code: `with client.messages.stream(
     model="claude-sonnet-5", max_tokens=1024,
     messages=[{"role": "user", "content": "Explain SSE in one paragraph."}],
 ) as stream:
     for text in stream.text_stream:
         print(text, end="", flush=True)
-final = stream.get_final_message()          # full message + usage
 
-# OpenAI (Responses API — the current primary surface)
-stream = openai_client.responses.create(
-    model="gpt-5.5", stream=True,
-    input="Explain SSE in one paragraph.",
-)
-for event in stream:
-    if event.type == "response.output_text.delta":
-        print(event.delta, end="", flush=True)`,
+final = stream.get_final_message()          # full message + usage`,
       explanation:
-        "On newer Claude models, thinking streams too (as thinking deltas) — surface it as a progress indicator or ignore it, but capture the final message either way.",
+        "On newer Claude models, thinking streams too (as thinking deltas) — surface it as a progress indicator or ignore it, but capture the final message after the loop either way.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `with client.responses.stream(
+    model="gpt-5.5",
+    input="Explain SSE in one paragraph.",
+) as stream:
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            print(event.delta, end="", flush=True)
+
+final = stream.get_final_response()          # full response + usage`,
+          explanation:
+            "The Responses API streams as typed events — branch on `event.type`. `response.output_text.delta` carries visible text; when reasoning summaries are enabled, `response.reasoning_summary_text.delta` streams those separately. `get_final_response()` returns the assembled output plus usage once the stream closes.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -338,7 +404,30 @@ data: {"type":"message_stop"}`,
     },
     {
       type: "paragraph",
-      text: 'When a streamed response contains a tool call, the arguments arrive as **fragments of a JSON string** (`input_json_delta`), not as parseable objects. A fragment might be `{"ci` — parsing it throws. The rule: accumulate fragments per block index until `content_block_stop`, then parse once. This is a classic live-coding trap.',
+      text: "Streaming text is easy: every `text_delta` is a finished piece of string — you print it and move on. **Tool calls are the exception, and this is the one part of streaming people get wrong.** When the model decides to call a tool, the tool's arguments are a JSON object — but that object does not arrive whole. The API types it out the same way it types out prose: as a run of tiny character fragments, one per `input_json_delta` frame. Any single fragment is just raw characters of half-written JSON, so on its own it almost never parses.",
+    },
+    {
+      type: "code",
+      language: "text",
+      title: "one JSON object, sliced across four deltas",
+      code: `The tool call the model wants:
+    {"city": "Paris", "units": "celsius"}
+
+How it actually arrives — one input_json_delta at a time:
+    delta 1  →  {"ci
+    delta 2  →  ty": "Par
+    delta 3  →  is", "un
+    delta 4  →  its": "celsius"}
+
+json.loads('{"ci')                     ✗  crashes — not valid JSON yet
+parse after every delta                ✗  keeps crashing until the last piece
+json.loads(all fragments joined)       ✓  {"city": "Paris", "units": "celsius"}`,
+      explanation:
+        "The delta boundaries are arbitrary — they fall wherever the network happened to chunk the bytes, not on JSON tokens. That's why no fragment is safe to parse in isolation.",
+    },
+    {
+      type: "paragraph",
+      text: "So the **key point** is a two-part rule. (1) *Don't parse as you go* — accumulate each fragment into a string buffer and call `json.loads` exactly once, when `content_block_stop` signals the object is complete. (2) *Keep one buffer per block, not one global buffer* — a single response can request several tools at once, and each is a separate content block with its own `index`; their fragments interleave on the wire, so you key buffers by index to keep them from mixing. That's the whole trick, and it's a classic live-coding trap.",
     },
     {
       type: "code",
