@@ -183,7 +183,11 @@ def run_tests(target: str = "") -> dict:
       type: "code",
       language: "python",
       title: "the bounded repair loop: red → green",
-      code: `MAX_ATTEMPTS = 5
+      provider: "claude",
+      code: `import anthropic
+
+client = anthropic.Anthropic()
+MAX_ATTEMPTS = 5
 
 def repair(plan: dict, issue_text: str) -> dict:
     system = (
@@ -196,11 +200,16 @@ def repair(plan: dict, issue_text: str) -> dict:
                  "content": f"Issue:\\n{issue_text}\\n\\nPlan:\\n{plan}"}]
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        resp = call_model(system, REPAIR_TOOLS, messages)
+        resp = client.messages.create(
+            model="claude-sonnet-5", max_tokens=4096,
+            system=system, tools=REPAIR_TOOLS, messages=messages,
+            output_config={"effort": "high"},   # hard repair steps earn depth
+        )
         messages.append({"role": "assistant", "content": resp.content})
 
         if resp.stop_reason != "tool_use":
-            # Model thinks it's done — verify independently, never take its word.
+            # stop_reason == "end_turn": the model THINKS it's done —
+            # verify independently, never take its word.
             final = run_tests()
             if final["passed"]:
                 return {"status": "success", "attempts": attempt}
@@ -219,7 +228,59 @@ def repair(plan: dict, issue_text: str) -> dict:
     return {"status": "exhausted", "attempts": MAX_ATTEMPTS,
             "last_tests": run_tests()}`,
       explanation:
-        "Three disciplines make this trustworthy. First, **never trust the model's 'done'** — when it stops, run the tests yourself and push failures back if it lied. Second, the loop is **bounded** by MAX_ATTEMPTS so a stuck agent fails cleanly instead of burning budget. Third, the system prompt forces **red before green** — a test that reproduces the bug is the only proof the fix is real. The returned status ('success' / 'exhausted') is exactly what the eval harness later aggregates.",
+        "Three disciplines make this trustworthy. First, **never trust the model's 'done'** — when it stops, run the tests yourself and push failures back if it lied. Second, the loop is **bounded** by MAX_ATTEMPTS so a stuck agent fails cleanly instead of burning budget. Third, the system prompt forces **red before green** — a test that reproduces the bug is the only proof the fix is real. The returned status ('success' / 'exhausted') is exactly what the eval harness later aggregates. Note the flagship reasoning models reject `temperature`; depth is spent via the effort knob instead.",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+from openai import OpenAI
+
+client = OpenAI()
+MAX_ATTEMPTS = 5
+
+def repair(plan: dict, issue_text: str) -> dict:
+    instructions = (
+        "Fix the bug per the plan. FIRST write a test that reproduces the "
+        "issue and fails (red). Then edit source with apply_edit until that "
+        "test AND all existing tests pass (green). Read failing output before "
+        "each edit. Tools: read_file, apply_edit, run_tests."
+    )
+    input_items = [{"role": "user",
+                    "content": f"Issue:\\n{issue_text}\\n\\nPlan:\\n{plan}"}]
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        resp = client.responses.create(
+            model="gpt-5.5", instructions=instructions,
+            input=input_items, tools=REPAIR_TOOLS,
+            reasoning={"effort": "high"},   # hard repair steps earn depth
+        )
+        calls = [item for item in resp.output if item.type == "function_call"]
+
+        if not calls:
+            # No function_call items: the model THINKS it's done —
+            # verify independently, never take its word.
+            final = run_tests()
+            if final["passed"]:
+                return {"status": "success", "attempts": attempt}
+            input_items.append({"role": "user", "content":
+                f"You stopped but tests still fail:\\n{final['output_tail']}\\n"
+                "Keep fixing."})
+            continue
+
+        for call in calls:
+            input_items.append(call)        # echo the call back into the input
+            result = run_repair_tool(call.name, json.loads(call.arguments))
+            input_items.append({"type": "function_call_output",
+                                "call_id": call.call_id,
+                                "output": json.dumps(result)})
+
+    # Bounded: give up cleanly rather than loop forever.
+    return {"status": "exhausted", "attempts": MAX_ATTEMPTS,
+            "last_tests": run_tests()}`,
+          explanation:
+            'Identical disciplines — never trust \'done\', bound the retries, force red before green — on Responses API plumbing: the done-signal is *no `function_call` items in `resp.output`* (vs. `stop_reason == "end_turn"`), tool arguments are a JSON string to parse, and each result returns as a `function_call_output` item keyed by `call_id` rather than a `tool_result` block. Both flagships reject `temperature` and take an effort knob for hard steps — `reasoning={"effort": "high"}` here, `output_config={"effort": "high"}` on the Messages API.',
+        },
+      ],
     },
     {
       type: "callout",

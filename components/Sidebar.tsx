@@ -7,12 +7,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 import { modules } from "@/content/registry";
 import { useProgress } from "@/lib/progress";
+import { setProviderPref, useProviderPref } from "@/lib/provider";
 import Tooltip from "@/components/Tooltip";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { completedLessons, moduleStats, ready } = useProgress();
   const [open, setOpen] = useState(false);
+  const providerPref = useProviderPref();
 
   const activeModuleSlug = modules.find((m) =>
     pathname?.startsWith(`/modules/${m.slug}`),
@@ -57,6 +59,46 @@ export default function Sidebar() {
       >
         Dashboard
       </Link>
+
+      <div className="mt-2 px-3">
+        <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-slate-600 uppercase">
+          Code examples
+        </div>
+        <div
+          role="radiogroup"
+          aria-label="Preferred SDK for code examples"
+          className="flex gap-1 rounded-lg bg-white/[0.04] p-0.5"
+        >
+          {(
+            [
+              ["claude", "Claude", "bg-[#d97757]"],
+              ["openai", "OpenAI", "bg-emerald-400"],
+            ] as const
+          ).map(([value, label, dot]) => (
+            <button
+              key={value}
+              role="radio"
+              aria-checked={providerPref === value}
+              onClick={() => setProviderPref(value)}
+              className={clsx(
+                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                providerPref === value
+                  ? "bg-white/10 text-slate-100"
+                  : "text-slate-500 hover:text-slate-300",
+              )}
+            >
+              <span
+                className={clsx(
+                  "h-1.5 w-1.5 rounded-full",
+                  dot,
+                  providerPref !== value && "opacity-40",
+                )}
+              />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-3 px-3 text-[11px] font-semibold tracking-wider text-slate-600 uppercase">
         Modules

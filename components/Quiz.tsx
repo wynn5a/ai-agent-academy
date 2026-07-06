@@ -40,6 +40,19 @@ export default function Quiz({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const missed = submitted
+    ? questions
+        .map((_, i) => i)
+        .filter((i) => answers[i] !== questions[i].correct)
+    : [];
+
+  const jumpTo = (qi: number) =>
+    document
+      .getElementById(`quiz-q-${qi}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const firstUnanswered = answers.findIndex((a) => a === null);
+
   return (
     <div>
       {best !== undefined && !submitted && (
@@ -76,6 +89,22 @@ export default function Quiz({
               ? "Passed. This counts toward your checkpoint gate."
               : `Below the ${Math.round(PASS_THRESHOLD * 100)}% pass bar. Review the explanations below, revisit the lessons, then retry.`}
           </div>
+          {missed.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Review misses:
+              </span>
+              {missed.map((qi) => (
+                <button
+                  key={qi}
+                  onClick={() => jumpTo(qi)}
+                  className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-300 transition-colors hover:bg-red-500/20"
+                >
+                  Q{qi + 1}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={retry}
             className="mt-3 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/15"
@@ -88,14 +117,31 @@ export default function Quiz({
       <ol className="space-y-8">
         {questions.map((q, qi) => {
           const chosen = answers[qi];
+          const gotIt = submitted && chosen === q.correct;
           return (
             <li
               key={qi}
-              className="border-border bg-card rounded-xl border p-5"
+              id={`quiz-q-${qi}`}
+              className={clsx(
+                "border-border bg-card scroll-mt-24 rounded-xl border p-5",
+                submitted && !gotIt && "border-red-500/30",
+              )}
             >
-              <div className="mb-4 leading-relaxed font-medium text-slate-200">
-                <span className="mr-2 text-slate-500">{qi + 1}.</span>
-                {renderInline(q.question)}
+              <div className="mb-4 flex items-start gap-2 leading-relaxed font-medium text-slate-200">
+                <span className="text-slate-500">{qi + 1}.</span>
+                <span className="flex-1">{renderInline(q.question)}</span>
+                {submitted && (
+                  <span
+                    className={clsx(
+                      "mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-bold",
+                      gotIt
+                        ? "bg-emerald-500/15 text-emerald-400"
+                        : "bg-red-500/15 text-red-400",
+                    )}
+                  >
+                    {gotIt ? "✓" : "✗"}
+                  </span>
+                )}
               </div>
               <div className="space-y-2">
                 {q.options.map((opt, oi) => {
@@ -151,7 +197,15 @@ export default function Quiz({
       </ol>
 
       {!submitted && (
-        <div className="sticky bottom-4 mt-8">
+        <div className="sticky bottom-4 mt-8 space-y-2">
+          {answered > 0 && answered < questions.length && (
+            <button
+              onClick={() => jumpTo(firstUnanswered)}
+              className="border-border bg-bg/90 mx-auto block rounded-full border px-4 py-1.5 text-xs text-slate-400 shadow-lg backdrop-blur transition-colors hover:text-sky-300"
+            >
+              ↓ Jump to next unanswered (Q{firstUnanswered + 1})
+            </button>
+          )}
           <button
             onClick={submit}
             disabled={answered < questions.length}

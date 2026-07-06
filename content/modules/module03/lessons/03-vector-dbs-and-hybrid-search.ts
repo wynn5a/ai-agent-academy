@@ -53,7 +53,7 @@ for h in hits:
     },
     {
       type: "paragraph",
-      text: "\"How does the vector index actually work?\" is a standard senior probe, and the answer to sketch is **HNSW** (hierarchical navigable small world), the index behind most vector DBs. Every vector is a node in a graph, linked to a handful of near neighbors; graphs are stacked in layers like a skip list — sparse express layers on top, the dense full graph at the bottom. A query greedily walks from an entry point: at each layer, hop to whichever neighbor is closest to the query until no neighbor improves, then descend. Result: **logarithmic-ish search instead of comparing against every vector** — that's the entire point of a vector DB versus the numpy matrix.",
+      text: '"How does the vector index actually work?" is a standard senior probe, and the answer to sketch is **HNSW** (hierarchical navigable small world), the index behind most vector DBs. Every vector is a node in a graph, linked to a handful of near neighbors; graphs are stacked in layers like a skip list — sparse express layers on top, the dense full graph at the bottom. A query greedily walks from an entry point: at each layer, hop to whichever neighbor is closest to the query until no neighbor improves, then descend. Result: **logarithmic-ish search instead of comparing against every vector** — that\'s the entire point of a vector DB versus the numpy matrix.',
     },
     {
       type: "paragraph",
@@ -122,6 +122,11 @@ def hybrid_search(query: str, top: int = 50) -> list[int]:
       text: "Why rank fusion instead of score fusion? BM25 scores are unbounded and corpus-dependent; cosine similarities live in [-1, 1] and cluster tightly. Any weighted sum of the two is an arbitrary, corpus-specific hack that breaks when you change embedding models. **Ranks are the only stable common currency** — which is why RRF, despite being almost insultingly simple, is the production default.",
     },
     {
+      type: "callout",
+      kind: "career",
+      text: 'Vector databases show up **by name** in agent-engineering job postings — Pinecone, Qdrant, Weaviate — usually right next to "hybrid search" and "reranking" in the requirements list. You don\'t need production miles on all three: the same client concepts (collections, upserts, payload metadata, pre-filtering) transfer, and what actually screens well is explaining *why* filters must constrain the ANN walk, when index recall is the silent culprit, and what RRF buys over score blending. This lesson plus Lab 03\'s per-mode metrics table is that conversation, prepared.',
+    },
+    {
       type: "table",
       headers: ["Query type", "Dense-only", "BM25-only", "Hybrid (RRF)"],
       rows: [
@@ -150,7 +155,7 @@ def hybrid_search(query: str, top: int = 50) -> list[int]:
       type: "exercise",
       kind: "predict",
       prompt:
-        "Query: `\"what does ERR_CONN_5031 mean\"`. The corpus has exactly one chunk documenting that error code. Predict where that chunk ranks in (a) dense-only, (b) BM25-only, and (c) the RRF fusion — and what the fused list looks like overall.",
+        'Query: `"what does ERR_CONN_5031 mean"`. The corpus has exactly one chunk documenting that error code. Predict where that chunk ranks in (a) dense-only, (b) BM25-only, and (c) the RRF fusion — and what the fused list looks like overall.',
       answer:
         "(a) **Dense**: poorly — often rank 20–50 or absent. The embedding model has never meaningfully seen `ERR_CONN_5031`; the token contributes near-noise, so the query vector lands among generic connection-error prose. (b) **BM25**: rank ~1 — the code appears in one document, so its IDF is enormous; one exact match dominates the score. (c) **RRF**: the chunk fuses to the top — it earns ~1/(60+1) from BM25's rank-1 alone, more than chunks ranked mid-list in *both* retrievers earn combined. The rest of the fused list interleaves dense's semantically-related chunks (retry configuration, connection troubleshooting) — which is exactly what you want as supporting context. The senior observation: fusion isn't averaging two mediocre lists, it's **union-with-insurance** — each retriever's confident hits survive the other's blindness, which is why hybrid's win shows up most on the query types where one mode fails outright.",
     },
@@ -164,7 +169,7 @@ def hybrid_search(query: str, top: int = 50) -> list[int]:
       prompt:
         "**Drill:** \"Walk me through what happens inside the vector DB between 'here's a query vector' and 'here are 10 ids' — and where it can silently lose the right answer.\"",
       answer:
-        "Sketch HNSW: nodes = vectors with links to near neighbors, layered like a skip list; the query enters at a sparse top layer, greedily hops toward the query at each layer, descends, and at the bottom collects the best candidates seen (breadth controlled by the search parameter). Sub-linear because it visits a tiny fraction of nodes. Then the two silent-loss points: (1) **the greedy walk is approximate** — a true nearest neighbor in an unexplored graph region never gets visited; recall is tunable via search breadth at a latency price, and you validate it by diffing ANN results against brute-force on a sample (vector DBs report this as index recall); (2) **filters** — post-filtering after the walk starves selective filters (the multi-tenant trap), so the filter must constrain the walk (pre-filtering) or you oversample. Close with operations: RAM proportional to vectors + graph, deletes degrade the graph until re-index/merge. **Follow-up probe:** \"when would you *not* use ANN?\" → small corpora (≤ ~100K vectors): brute-force cosine is milliseconds, exact, zero index maintenance — the numpy matrix was never wrong, just unscalable.",
+        'Sketch HNSW: nodes = vectors with links to near neighbors, layered like a skip list; the query enters at a sparse top layer, greedily hops toward the query at each layer, descends, and at the bottom collects the best candidates seen (breadth controlled by the search parameter). Sub-linear because it visits a tiny fraction of nodes. Then the two silent-loss points: (1) **the greedy walk is approximate** — a true nearest neighbor in an unexplored graph region never gets visited; recall is tunable via search breadth at a latency price, and you validate it by diffing ANN results against brute-force on a sample (vector DBs report this as index recall); (2) **filters** — post-filtering after the walk starves selective filters (the multi-tenant trap), so the filter must constrain the walk (pre-filtering) or you oversample. Close with operations: RAM proportional to vectors + graph, deletes degrade the graph until re-index/merge. **Follow-up probe:** "when would you *not* use ANN?" → small corpora (≤ ~100K vectors): brute-force cosine is milliseconds, exact, zero index maintenance — the numpy matrix was never wrong, just unscalable.',
     },
     {
       type: "exercise",

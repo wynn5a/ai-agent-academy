@@ -1,6 +1,20 @@
 // ---------- Content schema for the Agent Engineering Academy ----------
 
-export type CalloutKind = "info" | "tip" | "warning" | "danger" | "insight";
+export type CalloutKind =
+  "info" | "tip" | "warning" | "danger" | "insight" | "career"; // ties a concept to what interviewers/hiring managers screen for
+
+/** Which LLM provider a code snippet targets. Blocks tagged "claude" or
+ *  "openai" participate in the global provider toggle; "neutral" (default)
+ *  renders as a plain single block. */
+export type Provider = "claude" | "openai" | "neutral";
+
+export interface CodeVariant {
+  provider: Exclude<Provider, "neutral">;
+  label?: string; // defaults to "Claude" / "OpenAI"
+  language?: string; // defaults to the parent block's language
+  code: string;
+  explanation?: string;
+}
 
 export type Section =
   | { type: "heading"; text: string }
@@ -13,6 +27,10 @@ export type Section =
       title?: string;
       code: string;
       explanation?: string; // shown below the block; markdown-lite
+      /** Provider of the base `code` snippet (default "neutral"). */
+      provider?: Provider;
+      /** Same snippet for other providers — renders as synced tabs. */
+      variants?: CodeVariant[];
     }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "animation"; name: AnimationName; caption?: string }

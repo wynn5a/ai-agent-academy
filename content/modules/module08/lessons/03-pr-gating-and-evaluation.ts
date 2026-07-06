@@ -83,7 +83,19 @@ def open_pr_if_approved(repo_full: str, branch: str, base: str,
       type: "code",
       language: "python",
       title: "an independent review pass before the human ever sees the diff",
+      provider: "claude",
       code: `import json
+
+REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "touches_tests": {"type": "boolean"},
+        "scope_concern": {"type": "boolean"},
+        "verdict": {"type": "string", "enum": ["pass", "flag"]},
+    },
+    "required": ["touches_tests", "scope_concern", "verdict"],
+    "additionalProperties": False,
+}
 
 def independent_review(diff: str, issue_text: str) -> dict:
     """A DIFFERENT model/context reviews the diff before a human does.
@@ -94,17 +106,59 @@ def independent_review(diff: str, issue_text: str) -> dict:
             "You are reviewing a code change, not the engineer who wrote it. "
             "Check: does the diff plausibly fix the described issue? Does it "
             "touch any file under tests/ or named test_*/*_test? Is the diff "
-            "larger than the issue seems to warrant? Respond as JSON: "
-            '{"touches_tests": bool, "scope_concern": bool, '
-            '"verdict": "pass" | "flag"}.'
+            "larger than the issue seems to warrant?"
         ),
         messages=[{"role": "user", "content":
             f"Issue:\\n{issue_text}\\n\\nDiff:\\n{diff}"}],
+        # Structured output: the verdict is machine-routed, so don't parse prose.
+        output_config={"format": {"type": "json_schema", "schema": REVIEW_SCHEMA}},
     )
     text = next(b.text for b in resp.content if b.type == "text")
     return json.loads(text)`,
       explanation:
-        "The rubric is deliberately narrow and mechanical (touches_tests, scope_concern, verdict) rather than an open 'is this good?' — narrow, structured checks resist the position and self-preference biases Module 3 covers better than holistic judgments do. `touches_tests` is exactly the guardrail Lesson 2 promised against test-gaming: any repair that edits a test file gets flagged for elevated scrutiny automatically, before the human's limited attention is spent on it. This call is cheap triage, not certification — it exists so the HITL gate only ever sees diffs that already cleared automated review, not to replace the human's judgment.",
+        "The rubric is deliberately narrow and mechanical (touches_tests, scope_concern, verdict) rather than an open 'is this good?' — narrow, structured checks resist the position and self-preference biases Module 3 covers better than holistic judgments do. Because a gate routes on this verdict, the JSON shape is *enforced* via structured outputs rather than requested in the prompt. `touches_tests` is exactly the guardrail Lesson 2 promised against test-gaming: any repair that edits a test file gets flagged for elevated scrutiny automatically, before the human's limited attention is spent on it. This call is cheap triage, not certification — it exists so the HITL gate only ever sees diffs that already cleared automated review, not to replace the human's judgment.",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+from openai import OpenAI
+
+reviewer_client = OpenAI()   # if the fixer is a Claude model, this IS the
+                             # different-family reviewer — and vice versa
+
+REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "touches_tests": {"type": "boolean"},
+        "scope_concern": {"type": "boolean"},
+        "verdict": {"type": "string", "enum": ["pass", "flag"]},
+    },
+    "required": ["touches_tests", "scope_concern", "verdict"],
+    "additionalProperties": False,
+}
+
+def independent_review(diff: str, issue_text: str) -> dict:
+    """A DIFFERENT model/context reviews the diff before a human does.
+    Never let the model that wrote the fix be the only reviewer of it."""
+    resp = reviewer_client.responses.create(
+        model="gpt-5.5",
+        instructions=(
+            "You are reviewing a code change, not the engineer who wrote it. "
+            "Check: does the diff plausibly fix the described issue? Does it "
+            "touch any file under tests/ or named test_*/*_test? Is the diff "
+            "larger than the issue seems to warrant?"
+        ),
+        input=[{"role": "user", "content":
+            f"Issue:\\n{issue_text}\\n\\nDiff:\\n{diff}"}],
+        # Structured output: the verdict is machine-routed, so don't parse prose.
+        text={"format": {"type": "json_schema", "name": "review",
+                         "schema": REVIEW_SCHEMA, "strict": True}},
+    )
+    return json.loads(resp.output_text)`,
+          explanation:
+            'Same narrow rubric, same enforced JSON — the Responses API takes the schema via `text={"format": {"type": "json_schema", ..., "strict": True}}` where the Messages API uses `output_config={"format": {"type": "json_schema", ...}}`, and the result reads directly off `resp.output_text`. The cross-family pairing is the practical payoff of having both providers wired: a `claude-sonnet-5` fixer reviewed by `gpt-5.5` (or the reverse) de-biases by construction, per the self-preference material this lesson\'s drills cover.',
+        },
+      ],
     },
     {
       type: "heading",
@@ -231,7 +285,7 @@ def report(results: list[IssueResult]) -> dict:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Walk me through every gate a change goes through between your agent finishing a fix and that fix landing on main — and tell me which ones a determined agent could talk its way past.\"",
+        '**Drill:** "Walk me through every gate a change goes through between your agent finishing a fix and that fix landing on main — and tell me which ones a determined agent could talk its way past."',
       answer:
         "Narrate the layers in order and, for each, name what a misaligned or gamed agent could still slip through. **Lint/typecheck** catches nothing semantic — a plausible-looking but wrong fix sails through. **The test suite** can itself be gamed (Lesson 2's test-gaming) unless something specifically diffs test files rather than trusting the green checkmark. **An independent-review model** helps, but if it shares the generator's family it inherits some self-preference bias — the same failure Module 3 names for LLM judges — and a sufficiently plausible, well-worded PR description can talk past a holistic 'does this look right?' rubric; narrow, mechanical checks (touches_tests, diff-size-vs-issue-size) resist this better than open judgment calls. **Human approval** is the only gate that's actually adversarially robust, because it's the only layer that isn't itself another model reasoning about text that could, in principle, be crafted to fool it. The design principle to state explicitly: automate everything you can verify mechanically, and reserve human attention for the judgment calls that remain after the mechanical checks pass — that's what keeps the human gate meaningful instead of a rubber stamp under time pressure. **Follow-up probe:** \"what if the human just clicks approve without reading?\" → then the gate is theater regardless of how good the upstream layers are; the fix is a UI that forces a genuine look (diff and cost surfaced prominently, timeout defaults to reject not approve) and a periodic sample-audit of approvals after the fact to catch rubber-stamping before it becomes routine.",
     },
@@ -239,7 +293,7 @@ def report(results: list[IssueResult]) -> dict:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"You add a second LLM as an independent reviewer before human approval. It's the same model family as the one that wrote the fix. Good enough? What would you change?\"",
+        '**Drill:** "You add a second LLM as an independent reviewer before human approval. It\'s the same model family as the one that wrote the fix. Good enough? What would you change?"',
       answer:
         "Not good enough, and the reason is the exact judge-bias material from Module 3: a reviewer from the same model family, even in a fresh context with no shared memory, tends to rate outputs from its own family more favorably — similar training data, similar blind spots, similar failure modes it doesn't recognize as failures because it wouldn't have flagged them in its own output either. The fix isn't necessarily 'use a bigger model' — it's **de-bias by construction**: prefer a different model family for review when feasible, and regardless of family, replace open-ended judgment ('is this good?') with a narrow, structured rubric (does the diff touch tests/, is its size proportionate to the issue, does the description match the diff) — narrow checks resist bias better than holistic ones for the same reason Module 3's judge calibration teaches: vague rubrics produce incoherent, exploitable scores. Calibrate it the same way, too: hand-label a set of good/bad diffs, measure the reviewer's agreement with your labels, and treat disagreements as evidence to fix the rubric rather than trusting the dashboard. Frame it correctly for the interviewer: the independent reviewer is a cheap pre-filter that keeps obviously bad diffs from wasting the human's limited attention, not a replacement for the human gate or a certification of correctness. **Follow-up probe:** \"budget won't allow a second model call on every PR\" → don't review everything equally — reserve the independent-review call for diffs that trip a cheap heuristic first (touches tests/, diff size above a threshold, low confidence signal from the repair loop), so the extra spend concentrates where the risk actually is.",
     },

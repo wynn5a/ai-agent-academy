@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { getModule, modules } from "@/content/registry";
 import SectionRenderer from "@/components/SectionRenderer";
 import LabActions from "@/components/LabActions";
+import LabChecklist from "@/components/LabChecklist";
+import ReadingProgress from "@/components/ReadingProgress";
 
 export function generateStaticParams() {
   return modules.map((m) => ({ slug: m.slug }));
@@ -31,6 +33,7 @@ export default async function LabPage({
 
   return (
     <div>
+      <ReadingProgress />
       <div className="text-xs font-semibold text-slate-600">
         <Link href={`/modules/${mod.slug}`} className="hover:text-sky-400">
           Module {mod.id}: {mod.title}
@@ -53,22 +56,7 @@ export default async function LabPage({
         <SectionRenderer sections={lab.sections} />
       </div>
 
-      <div className="mt-10 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
-        <div className="mb-3 text-sm font-bold tracking-wider text-emerald-400 uppercase">
-          Acceptance criteria — all must pass
-        </div>
-        <ul className="space-y-2">
-          {lab.acceptanceCriteria.map((c, i) => (
-            <li
-              key={i}
-              className="flex gap-2 text-sm leading-relaxed text-slate-300"
-            >
-              <span className="mt-0.5 text-emerald-400">☐</span>
-              <span>{c}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <LabChecklist moduleSlug={mod.slug} criteria={lab.acceptanceCriteria} />
 
       {lab.stretchGoals && lab.stretchGoals.length > 0 && (
         <div className="border-border bg-card mt-6 rounded-xl border p-5">
@@ -89,7 +77,10 @@ export default async function LabPage({
         </div>
       )}
 
-      <LabActions moduleSlug={mod.slug} />
+      <LabActions
+        moduleSlug={mod.slug}
+        criteriaCount={lab.acceptanceCriteria.length}
+      />
     </div>
   );
 }

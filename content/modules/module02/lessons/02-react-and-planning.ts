@@ -149,6 +149,57 @@ def run_with_plan(question: str) -> str:
     ...`,
       explanation:
         "Three deliberate choices: the plan is produced by a **forced structured call** (Module 1's tool-choice trick), so you always get a parseable list; the plan is framed as \"a hypothesis\", which measurably lowers the model's tendency to defend it; and re-planning is a *tool call* — so it shows up in your trace log and you can count revisions per run. An agent that re-plans 5 times in 15 iterations is telling you the task or tools are underspecified.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+
+PLAN_TOOL = {
+    "type": "function",
+    "name": "submit_plan",
+    "description": "Record a step-by-step plan before doing any work.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "steps": {"type": "array", "items": {"type": "string"},
+                      "minItems": 1, "maxItems": 6},
+        },
+        "required": ["steps"],
+    },
+}
+
+def make_plan(question: str) -> list[str]:
+    resp = client.responses.create(
+        model=MODEL,
+        tools=[PLAN_TOOL],
+        tool_choice={"type": "function", "name": "submit_plan"},  # forced
+        input=[{"role": "user", "content":
+            "Plan how to answer this question using list_dir, grep and "
+            "read_file tools. At most 6 concrete steps.\\n\\n"
+            "Question: " + question}],
+    )
+    call = next(item for item in resp.output if item.type == "function_call")
+    return json.loads(call.arguments)["steps"]
+
+def run_with_plan(question: str) -> str:
+    plan = make_plan(question)
+    plan_text = "\\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
+    task = (
+        f"Question: {question}\\n\\nYour plan:\\n{plan_text}\\n\\n"
+        "Follow the plan, but treat it as a hypothesis. If an observation "
+        "contradicts a step, do NOT push on: call submit_plan again with a "
+        "revised plan, then continue."
+    )
+    input_items = [{"role": "user", "content": task}]
+    # ... standard loop from lesson 1, with submit_plan available as a tool;
+    # when the model calls it mid-run, log the revision and append a
+    # function_call_output of "Plan updated."
+    ...`,
+          explanation:
+            'Forcing a specific tool is `tool_choice={"type": "function", "name": ...}` (vs Anthropic\'s `{"type": "tool", ...}`), and the forced call arrives as a `function_call` item whose `arguments` is a JSON string to parse — not a pre-parsed `input` dict.',
+        },
+      ],
     },
     {
       type: "paragraph",

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getModule, modules } from "@/content/registry";
 import SectionRenderer from "@/components/SectionRenderer";
 import LessonFooter from "@/components/LessonFooter";
+import ReadingProgress from "@/components/ReadingProgress";
 
 export function generateStaticParams() {
   return modules.flatMap((m) =>
@@ -37,6 +38,7 @@ export default async function LessonPage({
 
   return (
     <article>
+      <ReadingProgress />
       <div className="text-xs font-semibold text-slate-600">
         <Link href={`/modules/${mod.slug}`} className="hover:text-sky-400">
           Module {mod.id}: {mod.title}

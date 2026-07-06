@@ -158,7 +158,7 @@ export const quiz04: QuizQuestion[] = [
   },
   {
     question:
-      "What is \"context rot,\" and why doesn't a 1M-token window make it a non-issue?",
+      'What is "context rot," and why doesn\'t a 1M-token window make it a non-issue?',
     options: [
       "A bug where old messages get corrupted in storage over time",
       "Attention is a finite resource spread across everything in the prompt, so a bloated-but-fitting context measurably degrades recall of the fact that matters — the 'lost in the middle' effect — even though nothing has been truncated or exceeded the window",

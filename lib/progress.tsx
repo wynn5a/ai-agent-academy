@@ -14,12 +14,15 @@ export interface ProgressState {
   completedLessons: Record<string, boolean>; // key: `${moduleSlug}/${lessonSlug}`
   quizScores: Record<string, number>; // key: moduleSlug, value: best fraction 0..1
   labsDone: Record<string, boolean>; // key: moduleSlug
+  // key: moduleSlug, value: checked state per acceptance-criterion index
+  labChecks: Record<string, Record<number, boolean>>;
 }
 
 const EMPTY: ProgressState = {
   completedLessons: {},
   quizScores: {},
   labsDone: {},
+  labChecks: {},
 };
 const STORAGE_KEY = "aea-progress-v1";
 
@@ -28,6 +31,7 @@ interface ProgressApi extends ProgressState {
   toggleLesson: (moduleSlug: string, lessonSlug: string) => void;
   recordQuiz: (moduleSlug: string, score: number) => void;
   toggleLab: (moduleSlug: string) => void;
+  toggleLabCheck: (moduleSlug: string, index: number) => void;
   resetAll: () => void;
   moduleStats: (moduleSlug: string) => {
     lessonsDone: number;
@@ -101,6 +105,20 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     [state, persist],
   );
 
+  const toggleLabCheck = useCallback(
+    (m: string, index: number) => {
+      const current = state.labChecks[m] ?? {};
+      persist({
+        ...state,
+        labChecks: {
+          ...state.labChecks,
+          [m]: { ...current, [index]: !current[index] },
+        },
+      });
+    },
+    [state, persist],
+  );
+
   const resetAll = useCallback(() => persist(EMPTY), [persist]);
 
   const moduleStats = useCallback(
@@ -153,6 +171,7 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         toggleLesson,
         recordQuiz,
         toggleLab,
+        toggleLabCheck,
         resetAll,
         moduleStats,
         gatePassed,

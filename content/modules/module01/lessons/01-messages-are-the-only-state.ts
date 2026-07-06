@@ -37,6 +37,33 @@ print(chat("My name is Wenming."))
 print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
       explanation:
         "Comment out the second `messages.append` and the model instantly 'forgets' — because memory never lived on the server. The `system` prompt rides along outside the array in Anthropic's API; in OpenAI's it's the first message with `role: \"system\"` (or `\"developer\"` in newer APIs).",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `from openai import OpenAI
+
+client = OpenAI()  # reads OPENAI_API_KEY
+
+input_items = []  # <- this list IS the conversation. You own it.
+
+def chat(user_text: str) -> str:
+    input_items.append({"role": "user", "content": user_text})
+    response = client.responses.create(
+        model="gpt-5.5",
+        instructions="You are a concise engineering assistant.",
+        input=input_items,        # full history, every single time
+    )
+    reply = response.output_text
+    input_items.append({"role": "assistant", "content": reply})
+    return reply
+
+print(chat("My name is Wenming."))
+print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
+          explanation:
+            "The system prompt is OpenAI's top-level `instructions` (vs Anthropic's `system`), and the Responses API *can* keep state server-side via `previous_response_id` — but owning the input list yourself is the portable habit every agent pattern builds on.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -62,6 +89,22 @@ print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
   }'`,
       explanation:
         "The response is JSON too: a list of content blocks, a `stop_reason`, and a `usage` object with token counts. Everything the SDK gives you — retries, types, streaming helpers — is built on this one endpoint.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `curl https://api.openai.com/v1/responses \\
+  -H "Authorization: Bearer $OPENAI_API_KEY" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "model": "gpt-5.5",
+    "instructions": "You are a concise engineering assistant.",
+    "input": [{"role": "user", "content": "My name is Wenming."}]
+  }'`,
+          explanation:
+            "Auth is a standard `Authorization: Bearer` header (vs Anthropic's `x-api-key` + `anthropic-version`), the system prompt is `instructions`, and `max_tokens` is optional here where Anthropic requires it.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -172,7 +215,7 @@ print(resp.usage.input_tokens, resp.usage.output_tokens)`,
       type: "exercise",
       kind: "spot-the-bug",
       prompt:
-        "To keep token costs down, a teammate adds naive history trimming. It works for a while, then some sessions start failing with a 400: `first message must use the \"user\" role`. Others quietly give worse answers. What are the two bugs?",
+        'To keep token costs down, a teammate adds naive history trimming. It works for a while, then some sessions start failing with a 400: `first message must use the "user" role`. Others quietly give worse answers. What are the two bugs?',
       code: `MAX_MSGS = 10
 
 def chat(user_text: str) -> str:
@@ -195,6 +238,12 @@ def chat(user_text: str) -> str:
       text: '"Why do you resend the whole conversation every turn, and what does that cost?" is a classic screener. Strong answer: the model is stateless; the messages array is the only context; therefore input cost grows quadratically with turns, and the mitigations are prompt caching, truncation, and summarization. Being able to do the token math above out loud is exactly the bar.',
     },
     {
+      type: "callout",
+      kind: "career",
+      title: "Why this module is the screen",
+      text: "AI Engineer is LinkedIn's #1 fastest-growing U.S. job title for 2026, and postings in the \"Agentic AI\" skill cluster grew roughly 280% year over year (~90K U.S. postings). The skills those postings name — Python, OpenAI/Anthropic tool calling, structured outputs — all sit on top of this lesson's stateless message loop, which is why interviewers screen it first: everything else in the role is built on it.",
+    },
+    {
       type: "heading",
       text: "Whiteboard drills",
     },
@@ -208,7 +257,7 @@ def chat(user_text: str) -> str:
       prompt:
         "**Drill:** Your agent's process crashes mid-conversation and the user reconnects to a different server. Design session resume.",
       answer:
-        "Because the API is stateless, resume is *entirely* a client-side persistence problem — there's nothing to restore on the provider side. Persist the `messages` array (plus the system prompt and tool set versions) to durable storage keyed by session id, written **atomically after every completed turn** — including assistant `tool_use` and thinking blocks *verbatim*, since they must be resent exactly. On reconnect: load, append the new user message, call the API. Two things to say unprompted: (1) a resumed session pays full input re-processing unless the prompt cache is still warm — resuming an hour later means a cold cache write; (2) persist *before* executing side-effectful tools, or a crash between execution and persistence replays the side effect. **Follow-up probe:** \"what if the restored history no longer fits the context window?\" → truncate at turn boundaries or summarize old turns before the first resumed call.",
+        'Because the API is stateless, resume is *entirely* a client-side persistence problem — there\'s nothing to restore on the provider side. Persist the `messages` array (plus the system prompt and tool set versions) to durable storage keyed by session id, written **atomically after every completed turn** — including assistant `tool_use` and thinking blocks *verbatim*, since they must be resent exactly. On reconnect: load, append the new user message, call the API. Two things to say unprompted: (1) a resumed session pays full input re-processing unless the prompt cache is still warm — resuming an hour later means a cold cache write; (2) persist *before* executing side-effectful tools, or a crash between execution and persistence replays the side effect. **Follow-up probe:** "what if the restored history no longer fits the context window?" → truncate at turn boundaries or summarize old turns before the first resumed call.',
     },
     {
       type: "exercise",
@@ -216,7 +265,7 @@ def chat(user_text: str) -> str:
       prompt:
         "**Drill:** A 50-turn support conversation averages ~300 tokens per turn, at $3/MTok input and $15/MTok output. Ballpark the session cost out loud — and name the single change that cuts it most.",
       answer:
-        "Cumulative input is triangular: 300 × (1+2+…+50) = 300 × 1,275 ≈ **380K input tokens ≈ $1.15**. Output is linear: 50 × 300 = 15K tokens ≈ **$0.22**. So input dominates ~5:1 — purely because history is resent — and it gets worse quadratically. Biggest single change: **prompt caching** on the stable prefix (~90% off cache reads turns that $1.15 into roughly $0.15–0.30 depending on hit rate); after that, summarize or truncate old turns, and route to a cheaper model if quality allows. **Follow-up probe:** \"why quadratic and not linear?\" → each turn re-processes all prior turns as input; summing 1..n is n(n+1)/2.",
+        'Cumulative input is triangular: 300 × (1+2+…+50) = 300 × 1,275 ≈ **380K input tokens ≈ $1.15**. Output is linear: 50 × 300 = 15K tokens ≈ **$0.22**. So input dominates ~5:1 — purely because history is resent — and it gets worse quadratically. Biggest single change: **prompt caching** on the stable prefix (~90% off cache reads turns that $1.15 into roughly $0.15–0.30 depending on hit rate); after that, summarize or truncate old turns, and route to a cheaper model if quality allows. **Follow-up probe:** "why quadratic and not linear?" → each turn re-processes all prior turns as input; summing 1..n is n(n+1)/2.',
     },
     {
       type: "exercise",
@@ -224,7 +273,7 @@ def chat(user_text: str) -> str:
       prompt:
         "**Drill:** Where does the system prompt actually live in the request, and what does that imply for caching and steering?",
       answer:
-        "Anthropic: a top-level `system` parameter outside the messages array. OpenAI: the first message with `role: \"system\"` (or `\"developer\"`). Either way it's serialized into the prompt **ahead of the conversation**, which has two consequences: (1) it's the highest-priority steering channel — instructions there outrank user text; (2) it's the front of the cached prefix, so it must be **byte-stable** — interpolating a timestamp or user name into it silently kills the cache for everything after it. Inject volatile context late in the messages list instead. **Follow-up probe:** \"a teammate puts `Current date: {now}` at the top of the system prompt — what do you see in the usage metrics?\" → `cache_read_input_tokens: 0` on every call while paying the write premium repeatedly.",
+        'Anthropic: a top-level `system` parameter outside the messages array. OpenAI: the first message with `role: "system"` (or `"developer"`). Either way it\'s serialized into the prompt **ahead of the conversation**, which has two consequences: (1) it\'s the highest-priority steering channel — instructions there outrank user text; (2) it\'s the front of the cached prefix, so it must be **byte-stable** — interpolating a timestamp or user name into it silently kills the cache for everything after it. Inject volatile context late in the messages list instead. **Follow-up probe:** "a teammate puts `Current date: {now}` at the top of the system prompt — what do you see in the usage metrics?" → `cache_read_input_tokens: 0` on every call while paying the write premium repeatedly.',
     },
     {
       type: "keypoints",

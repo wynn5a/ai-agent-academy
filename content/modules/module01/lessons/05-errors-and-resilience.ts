@@ -74,6 +74,34 @@ def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
             time.sleep(delay)`,
       explanation:
         "Jitter matters: if 50 workers all fail at once and all retry after exactly 2 seconds, you've synchronized a second stampede. Randomizing the delay decorrelates them. The official SDKs have built-in retries — but agents need their own layer with logging, budgets, and per-tool policies.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import random, time
+import openai
+
+RETRYABLE = (openai.RateLimitError, openai.APIStatusError,
+             openai.APIConnectionError, openai.APITimeoutError)
+
+def call_with_retries(fn, max_retries: int = 3, base: float = 1.0):
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except openai.BadRequestError:
+            raise                       # 400 = your bug. Never retry.
+        except RETRYABLE as e:
+            if attempt == max_retries:
+                raise
+            # exponential: 1s, 2s, 4s… + full jitter to avoid thundering herd
+            delay = base * (2 ** attempt) * (0.5 + random.random())
+            print(f"retryable error ({type(e).__name__}), "
+                  f"sleeping {delay:.1f}s (attempt {attempt + 1})")
+            time.sleep(delay)`,
+          explanation:
+            "The OpenAI SDK exposes the same typed hierarchy (`RateLimitError`, `APIStatusError` with `.status_code`, `APIConnectionError`) and also auto-retries transient errors — your layer exists for the logging, budgets, and policy the SDK can't know about.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -101,6 +129,23 @@ print(resp.usage.cache_read_input_tokens,    # cheap
       resp.usage.cache_creation_input_tokens)  # small premium, first call`,
       explanation:
         "Caching keys on an **exact prefix match** — reorder your tools or edit one system-prompt character and the cache misses. Structure requests as: stable stuff first (system, tools), volatile stuff last (messages). OpenAI applies prefix caching automatically on long prompts.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `# OpenAI has no cache_control — prefix caching is automatic on long prompts.
+# Your job is the same discipline anyway: stable prefix first, volatile last.
+resp = client.responses.create(
+    model="gpt-5.5",
+    instructions=LONG_SYSTEM_PROMPT,     # stable across turns
+    tools=TOOLS,                         # stable too — order matters
+    input=input_items,                   # volatile — goes last
+)
+print(resp.usage.input_tokens_details.cached_tokens)  # served from cache`,
+          explanation:
+            "OpenAI applies prefix caching automatically with no breakpoints to place — verify it's actually working via `usage.input_tokens_details.cached_tokens`, the counterpart of Anthropic's `cache_read_input_tokens`.",
+        },
+      ],
     },
     {
       type: "paragraph",
@@ -187,6 +232,40 @@ for r in client.messages.batches.results(batch.id):
         log_failure(r.custom_id, r.result)   # errored | canceled | expired`,
       explanation:
         "Two rules that show up as bugs: **results arrive in arbitrary order** — always key by `custom_id`, never by position — and each result has its own success/failure status, so per-item error handling still applies. The senior framing: split every workload into a latency-sensitive path (real-time, streaming, caching) and a throughput path (batch, cheap tier) — most systems that blow their budget are running batch-shaped work through the real-time lane.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+
+# OpenAI batching is file-shaped: one JSONL line per request
+lines = [json.dumps({
+    "custom_id": f"ticket-{t.id}",
+    "method": "POST", "url": "/v1/responses",
+    "body": {"model": "gpt-5.4-mini", "max_output_tokens": 256,
+             "input": [{"role": "user", "content": f"Classify: {t.text}"}]},
+}) for t in tickets]
+
+batch_file = client.files.create(
+    file=("tickets.jsonl", "\\n".join(lines).encode()), purpose="batch")
+batch = client.batches.create(input_file_id=batch_file.id,
+                              endpoint="/v1/responses",
+                              completion_window="24h")
+
+while True:
+    b = client.batches.retrieve(batch.id)
+    if b.status == "completed":
+        break
+    time.sleep(60)
+
+results = {}
+for line in client.files.content(b.output_file_id).text.splitlines():
+    r = json.loads(line)
+    results[r["custom_id"]] = r["response"]   # failures land in error_file_id`,
+          explanation:
+            "OpenAI's Batch API is file-based — upload a JSONL of requests, poll the batch, download an output file — but the economics (50% off, ≤24h window) and the key-by-`custom_id` rule are identical.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -242,7 +321,7 @@ for r in client.messages.batches.results(batch.id):
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your agent's API bill is 10× budget. Walk me through the audit\" — the full senior version, with the checks in order and what each one finds.",
+        '**Drill:** "Your agent\'s API bill is 10× budget. Walk me through the audit" — the full senior version, with the checks in order and what each one finds.',
       answer:
         "(1) **Get visibility**: per-call usage logs split by cache class; if they don't exist, add them first — everything else is guessing. (2) **Find the anomaly shape**: cost per *session* vs cost per *call* vs call *count* — each points somewhere different (history bloat vs payload bug vs a retry/loop storm). (3) **Check the classics**: a document or image accidentally resent every turn; `cache_read_input_tokens: 0` because a timestamp landed in the system prompt; a retry wrapper hammering 400s; an agent loop without an iteration cap. (4) **Apply levers biggest-first**: route stages to cheaper tiers (order-of-magnitude), move async work to the Batch API (2×), fix caching (up to ~10× on input), trim/summarize history, then hard per-session budgets so it can't recur silently. Name the expected magnitude of each lever — that's what distinguishes an audit from a list. **Follow-up probe:** \"cost is fine but p95 latency doubled — same audit?\" → same logs, different fields: TTFT vs total, iterations per turn, cache hit rate.",
     },
@@ -252,7 +331,7 @@ for r in client.messages.batches.results(batch.id):
       prompt:
         "**Drill:** Design the retry policy for a production agent product — not just the backoff loop, the whole policy.",
       answer:
-        "Start by **classifying**: retryable (429, 500/529, timeouts, connection errors — with exponential backoff + full jitter, honoring `retry-after`) vs never-retry (400/401/403 — fail fast, alert) vs not-an-error-but-not-retryable (`refusal`, `model_context_window_exceeded` — handle semantically). Then the policy layer: a **retry budget** per request (3–4 attempts) *and* per session (so a bad hour doesn't 10× costs), **circuit breaker** when provider error rate crosses a threshold (stop hammering, fail fast, page someone), **fallback model/provider** for sustained 529s, and **idempotency keys** anywhere a retry could double a side effect. Distinguish the three retry layers explicitly: HTTP-level (SDK), tool-executor-level, and semantic-level (feed a validation error back to the model) — one incident review where all three retried the same failure is how you learn this. **Follow-up probe:** \"why jitter?\" → 50 workers backing off in sync just schedule a second stampede; randomization decorrelates them.",
+        'Start by **classifying**: retryable (429, 500/529, timeouts, connection errors — with exponential backoff + full jitter, honoring `retry-after`) vs never-retry (400/401/403 — fail fast, alert) vs not-an-error-but-not-retryable (`refusal`, `model_context_window_exceeded` — handle semantically). Then the policy layer: a **retry budget** per request (3–4 attempts) *and* per session (so a bad hour doesn\'t 10× costs), **circuit breaker** when provider error rate crosses a threshold (stop hammering, fail fast, page someone), **fallback model/provider** for sustained 529s, and **idempotency keys** anywhere a retry could double a side effect. Distinguish the three retry layers explicitly: HTTP-level (SDK), tool-executor-level, and semantic-level (feed a validation error back to the model) — one incident review where all three retried the same failure is how you learn this. **Follow-up probe:** "why jitter?" → 50 workers backing off in sync just schedule a second stampede; randomization decorrelates them.',
     },
     {
       type: "exercise",
@@ -260,7 +339,7 @@ for r in client.messages.batches.results(batch.id):
       prompt:
         "**Drill:** One million support tickets arrive as a nightly dump; ~2% escalate and need a drafted reply by morning. Architect the pipeline and estimate the cost order-of-magnitude.",
       answer:
-        "Two stages, both async, so **everything goes through the Batch API at 50% off**. Stage 1: classify 1M tickets on the small tier (say ~500 tokens in / 50 out each → ~500M input tokens; at ~$1/MTok in, ~$5/MTok out, halved by batch ≈ **$250 + $125 ≈ $400/night**). Stage 2: draft replies for the ~20K escalations on the workhorse tier (~2K in / 500 out each → 40M in / 10M out; at $3/$15 halved ≈ **$60 + $75 ≈ $135**). Total ≈ $500–600/night — and say out loud that classification dominates, so any prompt token you shave there is worth 1M× nightly. Add: structured outputs with an enum for the classifier, validation + a small retry pass for failures, `custom_id` keyed to ticket ids, a completion check before the morning SLA with a real-time fallback lane for stragglers. **Follow-up probe:** \"the dump becomes a stream — what changes?\" → real-time endpoint for classification (still cheap tier), caching the classifier prompt prefix, and the cascade pattern for borderline cases.",
+        'Two stages, both async, so **everything goes through the Batch API at 50% off**. Stage 1: classify 1M tickets on the small tier (say ~500 tokens in / 50 out each → ~500M input tokens; at ~$1/MTok in, ~$5/MTok out, halved by batch ≈ **$250 + $125 ≈ $400/night**). Stage 2: draft replies for the ~20K escalations on the workhorse tier (~2K in / 500 out each → 40M in / 10M out; at $3/$15 halved ≈ **$60 + $75 ≈ $135**). Total ≈ $500–600/night — and say out loud that classification dominates, so any prompt token you shave there is worth 1M× nightly. Add: structured outputs with an enum for the classifier, validation + a small retry pass for failures, `custom_id` keyed to ticket ids, a completion check before the morning SLA with a real-time fallback lane for stragglers. **Follow-up probe:** "the dump becomes a stream — what changes?" → real-time endpoint for classification (still cheap tier), caching the classifier prompt prefix, and the cascade pattern for borderline cases.',
     },
     {
       type: "callout",

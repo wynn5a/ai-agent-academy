@@ -134,13 +134,76 @@ if __name__ == "__main__":
     },
     {
       type: "heading",
+      text: "Skipping the client entirely: provider-side MCP connectors",
+    },
+    {
+      type: "paragraph",
+      text: "Once your server speaks streamable HTTP, you don't even have to run the MCP client yourself: both major model providers can attach a remote MCP server **server-side**, on their end of the API call. You pass the server's URL in the request; the provider's infrastructure performs the handshake, injects the discovered tool schemas, executes `tools/call` round trips, and returns the finished conversation — your code makes one chat-API call and never touches JSON-RPC. The MCP server itself is identical in both cases, which is the whole point of the protocol: one server, every host, including hosts that are someone else's API.",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "attaching a remote MCP server to a model call, server-side",
+      provider: "claude",
+      code: `# Anthropic Messages API: MCP connector (beta)
+import anthropic
+
+client = anthropic.Anthropic()
+
+resp = client.beta.messages.create(
+    model="claude-sonnet-5",
+    max_tokens=1024,
+    betas=["mcp-client-2025-11-20"],
+    mcp_servers=[{
+        "type": "url",
+        "url": "https://orders.example.com/mcp",
+        "name": "orders",
+    }],
+    tools=[{"type": "mcp_toolset", "mcp_server_name": "orders"}],
+    messages=[{"role": "user",
+               "content": "Any open orders mentioning late delivery?"}],
+)
+print(resp.content)`,
+      explanation:
+        "Anthropic's MCP connector is a beta on the Messages API: declare the remote server in `mcp_servers`, then expose its tools to the model with an `mcp_toolset` tool entry. Anthropic's infrastructure runs the MCP client — handshake, tools/list, tools/call — during the request; your code never speaks the protocol.",
+      variants: [
+        {
+          provider: "openai",
+          code: `# OpenAI Responses API: remote MCP servers are a built-in tool type
+from openai import OpenAI
+
+client = OpenAI()
+
+resp = client.responses.create(
+    model="gpt-5.5",
+    tools=[{
+        "type": "mcp",
+        "server_label": "orders",
+        "server_url": "https://orders.example.com/mcp",
+        "require_approval": "never",
+    }],
+    input=[{"role": "user",
+            "content": "Any open orders mentioning late delivery?"}],
+)
+print(resp.output_text)`,
+          explanation:
+            'OpenAI models the same thing as a tool entry with `"type": "mcp"`: give the Responses API the server\'s URL and label, and OpenAI\'s infrastructure connects, discovers tools, and executes calls during the request. `require_approval` controls whether tool calls pause for your approval — "never" only for servers you fully trust (Lesson 5).',
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      text: "Everything from the rest of this lesson still applies — the provider's connector is just another remote MCP *client*, so your server still needs auth (both vendors let you forward an authorization token for the server), TLS, and the same trust reasoning as any other multi-client deployment. What the connector removes is client plumbing, not responsibility.",
+    },
+    {
+      type: "heading",
       text: "Whiteboard drills",
     },
     {
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"A personal GitHub-integration MCP server currently runs over stdio on your laptop. Product wants to make it a shared team tool. Walk me through everything that has to change — not just the transport flag.\"",
+        '**Drill:** "A personal GitHub-integration MCP server currently runs over stdio on your laptop. Product wants to make it a shared team tool. Walk me through everything that has to change — not just the transport flag."',
       answer:
         "Frame it as: transport is the easy 5% of this migration, trust boundary is the other 95%. Mechanically, flip `mcp.run()` to `transport=\"streamable-http\"` — that part really is that small, because transport is orthogonal to capabilities. Everything else changes: authentication goes from 'whoever can run this process' to 'every request needs a validated, scoped bearer token' via the spec's OAuth flow, which means standing up token issuance and storage; TLS becomes mandatory, not optional, since bearer tokens over plaintext HTTP are as good as no auth; the server's own downstream GitHub credentials need re-scoping — a personal server used only by you can hold a token with your full personal permissions, a shared server used by a team needs the narrowest token that covers every team member's legitimate use, because now a bug or injected prompt affects everyone connected, not just you; logging needs caller identity attached to every tool call, which didn't matter when there was one user; and operationally, someone now owns uptime, monitoring, and incident response for what used to just die when you closed your laptop. Close with the framing line: stdio's security model is 'inherit the OS,' and the moment you go multi-user that model doesn't degrade gracefully — it stops applying, and you have to build a real one from scratch. **Follow-up probe:** \"what's the single most commonly skipped step?\" → re-scoping the downstream credential — teams reuse the personal, over-permissioned token because it already works, and only notice the blast radius after an incident.",
     },
@@ -148,7 +211,7 @@ if __name__ == "__main__":
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Give me a scenario where stdio is the better engineering choice even though the team has the infrastructure to run everything as a shared HTTP service.\"",
+        '**Drill:** "Give me a scenario where stdio is the better engineering choice even though the team has the infrastructure to run everything as a shared HTTP service."',
       answer:
         "Any tool that only makes sense scoped to one machine and one identity, where the 'shared service' framing actively adds risk without adding value. Concretely: a local filesystem or local-dev-environment MCP server — one that reads files from the user's own project directory, or drives their local git worktree — has no sensible multi-tenant story at all; as a shared HTTP service you're either running it once per user anyway (gaining nothing but auth overhead) or trying to make one process safely access forty different users' filesystems, a much harder and riskier problem than the one you started with. The other classic case is a debugging or admin tool intentionally scoped to 'whoever is sitting at this terminal' — a stdio server run by an on-call engineer during an incident inherits exactly the access that engineer already has, with zero additional attack surface; making it a shared HTTP service would mean building and auditing an entire auth layer for a tool whose entire threat model is 'already-trusted person, already on the machine.' The generalizable test: if the tool's natural scope is inherently single-user and single-machine, HTTP's multi-client story solves a problem you don't have while introducing the auth, TLS, and ops obligations you do have to solve instead. **Follow-up probe:** \"what if that local tool later needs to be triggered remotely, e.g. from CI?\" → that's a genuinely different requirement, not a 'let's future-proof it' preference — build the HTTP version when that concrete need arrives, informed by what CI actually needs to call, rather than speculatively.",
     },
@@ -162,6 +225,7 @@ if __name__ == "__main__":
         "Remote servers must authenticate clients (OAuth-based flow in the spec / bearer tokens at minimum) and scope their own credentials tightly.",
         "OAuth authenticates the client via a bearer token, not each tool call — an overscoped or leaked shared token gives full, unattributable tool access.",
         "Prefer per-client tokens over one shared static token: revocation and caller attribution both depend on it.",
+        'Both major providers can attach a remote MCP server server-side — OpenAI via a `{"type": "mcp"}` tool entry, Anthropic via `mcp_servers` + an `mcp_toolset` tool (beta) — while the server itself stays identical.',
       ],
     },
   ],

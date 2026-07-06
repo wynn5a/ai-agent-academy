@@ -81,6 +81,56 @@ def starts_with_tool_result(msg: dict) -> bool:
                     for b in c))`,
       explanation:
         "The boundary shuffle is the part everyone gets wrong first: if the kept region begins with a `tool_result`, its `tool_use` partner just got summarized away and your next API call 400s. Also note the summarizer runs with an explicit preservation list baked into the system prompt — a freestyle summary will smooth away the exact constraint you most needed.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `COMPACT_AT = 0.75          # of the window budget
+WINDOW_BUDGET = 60_000     # tokens you allow the conversation to occupy
+KEEP_RECENT = 8            # messages kept verbatim
+
+SUMMARIZER_PROMPT = (
+    "Summarize this conversation prefix for an agent that will continue it.\\n"
+    "PRESERVE EXACTLY: the user's goal, all standing constraints and "
+    "prohibitions, decisions made, and every file path, identifier, number, "
+    "and error message. Note outcomes of tool calls, not their transcripts.\\n"
+    "Write a dense factual digest. No praise, no meta-commentary."
+)
+
+def maybe_compact(messages: list[dict], instructions: str) -> list[dict]:
+    if count(messages, instructions) < COMPACT_AT * WINDOW_BUDGET:
+        return messages
+
+    cut = len(messages) - KEEP_RECENT
+    # never orphan a function_call_output from its function_call: shift the
+    # cut to a boundary where the next kept item starts a fresh user turn
+    while cut > 0 and is_function_call_output(messages[cut]):
+        cut -= 1
+    old, recent = messages[:cut], messages[cut:]
+    if not old:
+        return messages     # nothing safely compactable; raise budget or digest tools harder
+
+    resp = client.responses.create(
+        model=MODEL,
+        instructions=SUMMARIZER_PROMPT,
+        input=old + [{"role": "user", "content":
+                      "Now produce the summary of everything above."}],
+    )
+    summary = resp.output_text
+    return [
+        {"role": "user", "content":
+         f"<conversation_summary>\\n{summary}\\n</conversation_summary>"},
+        {"role": "assistant", "content": "Understood. Continuing from that summary."},
+    ] + recent
+
+def is_function_call_output(msg: dict) -> bool:
+    # Responses histories interleave role messages with function_call /
+    # function_call_output items; the strict pairing rule applies to those
+    return isinstance(msg, dict) and msg.get("type") == "function_call_output"`,
+          explanation:
+            "The Responses API *offers* server-side conversation state (`previous_response_id`) that would spare you resending history — deliberately unused here, because compaction only works if you own the message list, so this pattern stays stateless like the Claude version. The pairing rule survives the translation with new names: never let the cut orphan a `function_call_output` item from its `function_call`, or the next call is rejected exactly as Anthropic rejects a stranded `tool_result`.",
+        },
+      ],
     },
     {
       type: "callout",
@@ -114,6 +164,34 @@ def starts_with_tool_result(msg: dict) -> bool:
         "agent forgot the frozen-directory constraint after compaction")`,
       explanation:
         "This is behavior-level testing: don't inspect the summary text (brittle), verify the *agent still acts correctly* after compaction. Keep two or three of these planted-constraint scenarios in your suite and run them whenever you touch the summarizer prompt — summarizer prompts regress silently.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `def test_constraint_survives_compaction():
+    messages = [
+        {"role": "user", "content":
+         "We're refactoring billing. Constraint: never modify files "
+         "under legacy/ - they are frozen for the audit."},
+        {"role": "assistant", "content": "Noted: legacy/ is frozen."},
+    ]
+    # ... pad with 40 turns of filler work until compaction triggers ...
+    messages = pad_with_filler_turns(messages, turns=40)
+    compacted = maybe_compact(messages, SYSTEM_PROMPT)
+    assert len(compacted) < len(messages), "compaction should have fired"
+
+    compacted.append({"role": "user", "content":
+        "Quick cleanup: delete the unused helpers in legacy/utils.py?"})
+    resp = client.responses.create(model=MODEL,
+                                   instructions=SYSTEM_PROMPT,
+                                   input=compacted)
+    answer = resp.output_text.lower()
+    assert "frozen" in answer or "legacy" in answer and "no" in answer.split(".")[0], (
+        "agent forgot the frozen-directory constraint after compaction")`,
+          explanation:
+            "The test is provider-agnostic by design — only the final call changes: `instructions=` + `input=` + `resp.output_text` replace `system=` + `messages=` + walking content blocks. The assertion targets behavior, not summary wording, so it ports across providers (and across your own summarizer rewrites) unchanged.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -134,7 +212,7 @@ def starts_with_tool_result(msg: dict) -> bool:
         [
           "Tool call outcomes",
           "The final result a decision depended on",
-          "The intermediate retries, false starts, and commands that didn't pan out — keep \"grep found nothing in src/, then found it in lib/\", drop the five failed greps in between",
+          'The intermediate retries, false starts, and commands that didn\'t pan out — keep "grep found nothing in src/, then found it in lib/", drop the five failed greps in between',
         ],
         [
           "Exploration",
@@ -144,7 +222,7 @@ def starts_with_tool_result(msg: dict) -> bool:
         [
           "Chit-chat / acknowledgments",
           "—",
-          "Everything — \"Sounds good, thanks!\" carries no task state",
+          'Everything — "Sounds good, thanks!" carries no task state',
         ],
         [
           "Errors",
@@ -182,7 +260,7 @@ old, recent = messages[:cut], messages[cut:]
       type: "exercise",
       kind: "concept",
       prompt:
-        '**Drill:** "Your compaction threshold is 75% of budget. A teammate wants to drop it to 50% to \'never risk running out of room.\' What\'s wrong with that instinct?"',
+        "**Drill:** \"Your compaction threshold is 75% of budget. A teammate wants to drop it to 50% to 'never risk running out of room.' What's wrong with that instinct?\"",
       answer:
         "It trades a rare, cheap problem for a constant, expensive one. Compacting more often means paying the cache-invalidation tax (above) more often — every compaction pass re-prefills the history at full price on the next call, so halving the threshold roughly doubles how often you eat that cost, for headroom you're not actually using. It also means summarizing more aggressively and more frequently, which is exactly where information loss compounds — every summarization pass is another lossy transformation, and doing it twice as often multiplies the chances a load-bearing detail gets smoothed away somewhere along the chain. The right instinct isn't 'compact earlier to be safe,' it's 'compact at a threshold that leaves headroom for the summary call itself and the next big tool result, and no earlier.' 75% is a reasonable default because it accounts for exactly that headroom, not because it's a round number. **Follow-up probe:** \"how would you tell if 75% is actually the right number for this agent?\" → look at what triggers compaction in the trace — if sessions frequently blow *past* 75% before the next natural check-in point (e.g. a single huge tool result pushes past budget in one jump), you need a lower threshold or per-component caps; if compaction rarely fires and cache hit rates are healthy, you have room to raise it.",
     },

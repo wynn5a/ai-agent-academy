@@ -43,6 +43,8 @@ class ResearchState(TypedDict):
 # handoff.py — HandoffBrief (pydantic) + log_handoff() -> handoffs.jsonl
 
 # graph.py
+# one model for every node AND the baseline — swappable by one string:
+# model = init_chat_model("anthropic:claude-sonnet-5")  # or: "openai:gpt-5.5"
 builder = StateGraph(ResearchState)
 builder.add_node("planner", planner)         # decompose via structured output
 builder.add_node("searcher", searcher)       # fanned out per subtask
@@ -71,6 +73,19 @@ graph = builder.compile(checkpointer=sqlite_checkpointer)  # durable!
       kind: "warning",
       title: "The honesty clause",
       text: "The baseline comparison is graded on rigor, not on the multi-agent system winning. Sum tokens across every model call including planner and critic turns; randomize judge order; spot-check judgments by hand. If the single agent wins on quality-per-dollar — a common outcome — the README says so and analyzes why. A rigged comparison fails the lab.",
+    },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo** — architecture diagram up top, then a short clip or GIF: question in, planner fans out, gate pauses, human approves, cited brief out. Hiring managers look at GitHub before the résumé; make the first minute count.",
+        "**Logged inter-agent traces** — commit a sample `handoffs.jsonl` and link it from the README. A multi-agent system with specialized roles and logged inter-agent traces is a specifically-cited portfolio project in hiring guides, and the trace file is the artifact reviewers actually open.",
+        "**Demonstrate the HITL approval flow** — capture the pause (process exits), then the resume with both an approve and a reject-with-feedback. Approval gates in front of irreversible actions are what enterprises specifically screen for.",
+        "**An honest 'Limitations' section** — where the single agent won or tied, the judge's noise floor, and what you'd measure next before trusting the multi-agent claim. A measured negative result reads as senior; a suspiciously uniform win reads as rigged.",
+      ],
     },
   ],
   acceptanceCriteria: [

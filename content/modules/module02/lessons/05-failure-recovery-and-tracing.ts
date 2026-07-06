@@ -194,6 +194,47 @@ tracer.log("terminate", reason="finish tool called", complete=True,
            iterations=budget.iterations, total_usd=round(budget.usd, 4))`,
       explanation:
         "JSONL (one JSON object per line) is the right format because it's append-only (crash-safe — you keep everything up to the crash), streamable (`tail -f` during a live run), and trivially queryable with `jq` or pandas. Log *every* LLM call and *every* tool call, not just failures: the question you'll actually ask is \"what was the model seeing when it made this weird choice?\", and that requires the whole path. This log is also the artifact you walk through in the Gate G1 practical.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json, time, uuid
+
+class Tracer:
+    def __init__(self, path: str = "trace.jsonl"):
+        self.path = path
+        self.run_id = uuid.uuid4().hex[:8]
+
+    def log(self, event: str, **fields) -> None:
+        record = {"run_id": self.run_id, "ts": round(time.time(), 3),
+                  "event": event, **fields}
+        with open(self.path, "a") as f:
+            f.write(json.dumps(record, default=str) + "\\n")
+
+# usage inside the loop:
+tracer = Tracer()
+t0 = time.monotonic()
+resp = client.responses.create(model=MODEL, input=input_items, tools=TOOLS)
+calls = [item for item in resp.output if item.type == "function_call"]
+tracer.log("llm_call", iteration=i,
+           input_tokens=resp.usage.input_tokens,
+           output_tokens=resp.usage.output_tokens,
+           usd_so_far=round(budget.usd, 4),
+           tool_calls=len(calls),        # zero = the model's natural stop
+           latency_ms=round((time.monotonic() - t0) * 1000))
+
+for call in calls:
+    args = json.loads(call.arguments)
+    content, is_error = executor.execute(call.name, args)
+    tracer.log("tool_call", iteration=i, tool=call.name, args=args,
+               result_chars=len(content), is_error=is_error)
+
+tracer.log("terminate", reason="finish tool called", complete=True,
+           iterations=budget.iterations, total_usd=round(budget.usd, 4))`,
+          explanation:
+            "The Tracer is identical (JSONL doesn't care who you call); what changes is *what you log for termination* — the Responses API has no `stop_reason`, so record the count of `function_call` items instead (zero = natural stop). The `usage` field names match across both SDKs, so cost accounting is unchanged.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -202,6 +243,12 @@ tracer.log("terminate", reason="finish tool called", complete=True,
     {
       type: "paragraph",
       text: "The trace log's second life is the one seniors bring up unprompted: **every interesting failure becomes a test case**. A run where the agent spiraled, hallucinated on empty results, or blew its budget gets its *initial input* checked into a regression suite; after any prompt, tool, or model change, replay those inputs and compare outcomes (did it finish? within budget? citing real files?). That's the embryo of the eval harness Module 5 builds properly — and it's how prompt changes stop being vibes-driven. Two production notes to mention: real deployments usually emit this same data as **spans** through their observability stack (the GenAI conventions in OpenTelemetry, or purpose-built tools like LangSmith/Langfuse) rather than a local file — the *fields* are what matter, not the sink; and traces contain user data and tool outputs, so retention and PII policy apply to them like any other log.",
+    },
+    {
+      type: "callout",
+      kind: "career",
+      title: "Traces are a portfolio artifact",
+      text: "LLM observability tooling — **Langfuse, Arize Phoenix, LangSmith** — sits on the most-requested skills list in 2026 agentic postings, and hiring managers routinely look at your GitHub *before* your résumé. A repo whose README walks through a real trace of the loop — per-step tool choices, tokens, cost, and the termination reason — proves you've *operated* an agent rather than demoed one; the JSONL tracer you just built produces exactly that artifact, and Lab 02 asks you to ship it.",
     },
     {
       type: "heading",
@@ -219,7 +266,7 @@ tracer.log("terminate", reason="finish tool called", complete=True,
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your agent works. Now make changing it safe.\" — the interviewer wants your path from trace logs to a regression/eval loop.",
+        '**Drill:** "Your agent works. Now make changing it safe." — the interviewer wants your path from trace logs to a regression/eval loop.',
       answer:
         "Four moves. (1) **Curate**: mine traces for ~30–50 representative inputs — the common paths, every postmortem'd failure, and the weird tail (budget kills, multi-replan runs). Store input + frozen tool environment (stub the tools with recorded results where determinism matters). (2) **Define checkable outcomes** per case — not 'answer is good' but `complete == true`, `iterations <= 12`, `citations ⊆ files actually read`, `answer mentions X` — assertions a script can run. (3) **Gate changes**: every prompt/tool/model edit runs the suite; diffs in pass-rate, cost, and iteration count are reviewed like test failures. This catches the classic regression — a prompt tweak that fixes one case and silently doubles average iterations. (4) **Close the loop**: production keeps generating traces; failures graduate into the suite; the suite becomes the spec of what the agent must keep doing. Name the limitation honestly: replayed tool stubs drift from reality, so re-record environments periodically and keep a small live-fire subset. That maturity ladder — logs → fixtures → gated evals → continuous curation — is precisely what Module 5 industrializes. **Follow-up probe:** \"how do you eval non-deterministic outputs?\" → assertion-based checks where possible, LLM-judge with concrete rubrics where not, and n-run pass@k for flaky behaviors.",
     },

@@ -203,6 +203,12 @@ def gaps(bank):
       text: "The final gate is a full mock loop: a 45-minute system design, a code review of your capstone, and behavioral stories, judged at a 'would a senior panel say hire?' bar. You should be able to whiteboard the agent loop, RAG + eval, memory design, multi-agent trade-offs, and injection defenses — each in under five minutes from memory — and tell five STAR stories anchored in these projects. If you can, you're ready.",
     },
     {
+      type: "callout",
+      kind: "career",
+      title: "The mock loop is the interview",
+      text: "Hiring managers reportedly look at your GitHub before your résumé, and screeners consistently favor 2–3 deep, *evaluated* projects over a page of shallow demos — certifications barely register next to shipped, measured work. That's why Gate G4 is a rehearsed mock loop rather than a checklist: the design answer, the code review of your own capstone, and the STAR stories are the actual event, practiced in advance. And lead with the honest-limitations doc — interviewers probe inflated claims first, so the candidate who opens with 'here's exactly where it breaks, and here are the eval numbers' controls that conversation instead of surviving it.",
+    },
+    {
       type: "heading",
       text: "Whiteboard drills — the mock-interview loop",
     },
@@ -214,7 +220,7 @@ def gaps(bank):
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill (system design):** \"Design an autonomous coding agent, issue in, PR out, for a mid-size engineering org. Five minutes. Go.\"",
+        '**Drill (system design):** "Design an autonomous coding agent, issue in, PR out, for a mid-size engineering org. Five minutes. Go."',
       answer:
         "Structure it exactly like the framework: clarify, workflow-vs-agent, core, trust layer, top risks. **Clarify:** scope narrowly and say so out loud — 'simple, well-specified bug-fix issues, Python, <10k LOC, existing pytest suite' — and name what's explicitly out of scope. **Core:** tool design stays minimal and string-returning per Module 1 (search/list/read/apply_edit/run_tests, every path constrained to the sandbox), state lives outside the transcript as a checkpointed plan rather than growing the context indefinitely (Module 4's context-as-budget discipline), and edits default to search/replace for small, verifiable diffs. **Economics:** the system prompt and tool schemas are identical across the many calls one issue requires, and often across issues on the same repo — cache that stable prefix (Module 4's context-window economics) since exploration is call-heavy and this is close to free savings. **Termination:** layer iteration cap, cost cap, and wall-clock deadline, degrading to a best-effort report rather than raising (Module 2). **Trust layer:** sandboxed edits, an eval set with a partial-success taxonomy reported as pass@1 not pass@k (Lesson 3), an independent review pass before the human ever sees a diff, and an HITL gate as the final irreversible-action check, all wrapped in tracing for per-issue cost attribution (Module 7). **Close** by naming top risks unprompted: long-horizon drift, hallucinated APIs, test-gaming. **Follow-up probe:** \"cost is 3x over budget at that org's scale — first cut?\" → cache the stable prefix first (near-free, doesn't touch quality), then move exploration to a cheaper model and reserve the strong model for planning and repair, and only then consider narrowing scope or eval frequency — cut cost in order of least quality impact per dollar saved.",
     },
@@ -222,7 +228,7 @@ def gaps(bank):
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill (debugging, production incident):** \"Week two of rollout. Someone escalates: overnight the agent opened 40 PRs instead of the usual handful, most editing the same three files, and none of them fix anything real. Debug it live.\"",
+        '**Drill (debugging, production incident):** "Week two of rollout. Someone escalates: overnight the agent opened 40 PRs instead of the usual handful, most editing the same three files, and none of them fix anything real. Debug it live."',
       answer:
         "Reproduce from traces first (Module 7) — pull per-issue cost, iteration count, and outcome for the overnight batch and look for a pattern before touching anything. Branch the investigation: **(a) A runaway retry loop:** check whether someone raised the iteration cap or wall-clock deadline without re-validating against trace percentiles (Module 2) — a widened budget lets a spiraling repair keep 'trying' instead of hitting exhausted-and-report. **(b) Stale/concurrent edits on hot files:** if those three files are frequently touched by other automation or humans mid-run, exact-match `apply_edit` should fail loudly with 'block not found' rather than silently succeed — 40 PRs landing cleanly on stale reads suggests either the staleness guard from Lesson 2 wasn't wired in, or someone had quietly swapped to line-number edits, which drift silently instead of failing loudly. **(c) The HITL gate itself:** check the approval log — were these actually approved, or did something bypass the gate? Once the mechanism is found, the fix is structural, not a one-off revert: reinstate a fleet-level circuit breaker (N consecutive exhausted/flagged runs pauses the whole batch, the same fleet-budget instinct from Module 2's batch-vs-interactive drill), and audit whether the gate's per-item approval quality degrades under volume. **Follow-up probe:** \"the human WAS reviewing each one and clicking approve — the diffs looked small and plausible\" → then the gate didn't fail mechanically, it failed under volume: 40 PRs overnight exceeds what a human can meaningfully review, so the real gap is a missing anomaly alert on PR-open *rate* — HITL only works as a gate if the human has attention budget per item, and volume itself can defeat it even when every individual diff looks fine.",
     },

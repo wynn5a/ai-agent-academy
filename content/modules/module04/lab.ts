@@ -69,10 +69,77 @@ def run_session(task: str):
 # tests/test_compaction.py — planted constraint survives compaction`,
       explanation:
         "Design decisions that matter: the demo's three sessions must be genuinely fresh processes (persistence you never exercised is persistence you never tested); every quarantine/rejection is logged with the reason, because Gate G2 asks you to *explain* why a payload was caught, not just show that it was; and the compaction test asserts behavior (constraint still honored), not summary wording.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `# memory/store.py — MemoryStore over SQLite (schema from Lesson 3)
+#   columns: fact, provenance JSON, created_at, importance,
+#            superseded_by, embedding
+
+# memory/write_path.py — identical: the gauntlet never touches the SDK
+def commit_session(store, transcript: str, session_id: str) -> list[str]:
+    outcomes = []
+    for cand in extract_candidates(transcript, session_id):
+        verdict = screen_candidate(cand)          # provenance + instruction gates
+        if verdict != "accept":
+            log_quarantine(cand, verdict)
+            outcomes.append(f"{verdict}: {cand['fact']}")
+            continue
+        outcomes.append(write_fact(store, cand))  # dedupe + contradiction check
+    return outcomes
+
+# memory/read_path.py — identical
+def session_preamble(store, task_hint: str) -> str:
+    mems = recall(store, task_hint, k=5, min_score=0.35)
+    if not mems:
+        return ""                                  # empty beats misleading
+    return render_fenced_memory_block(mems)        # <memories> ... </memories>
+
+# agent.py — Lab 02 loop, now memory-aware
+def run_session(task: str):
+    instructions = SYSTEM_PROMPT + session_preamble(STORE, task)
+    messages = [{"role": "user", "content": task}]
+    while True:
+        messages = maybe_compact(messages, instructions)   # 75% threshold
+        resp = call_with_retries(lambda: client.responses.create(
+            model="gpt-5.5", instructions=instructions,
+            tools=SCHEMAS, input=messages))
+        # ... Lab 02 tool loop unchanged: append resp.output, run each
+        #     function_call item, append its function_call_output ...
+        if not any(item.type == "function_call" for item in resp.output):
+            break
+    commit_session(STORE, render_transcript(messages), new_session_id())
+
+# demo.py — three sessions, three fresh processes
+# tests/test_injection.py — your red-team suite (Lesson 5 harness)
+# tests/test_compaction.py — planted constraint survives compaction`,
+          explanation:
+            "One deliberate design choice to notice: the Responses API offers server-side conversation state (`previous_response_id`) that would let you skip resending history — this lab keeps the message list client-side **on purpose**, because compaction, the write path, and the transcript you commit at session end all require owning that list. The stop condition becomes 'no `function_call` items in `resp.output`' instead of `stop_reason != \"tool_use\"`; everything memory-related is provider-neutral.",
+        },
+      ],
     },
     {
       type: "paragraph",
       text: "**How Gate G2 will probe it:** you'll run the three-session demo live for Claude, then Claude writes **one novel injection payload** — a phrasing not in your test suite — and you run it through your write path on the spot. This is why the provenance gate matters more than the instruction classifier: a structural rule (\"content the agent merely read never auto-qualifies as memory\") catches attacks you didn't anticipate, while a classifier alone catches only attacks that look like your training examples. Be ready to narrate each layer's decision from your logs.",
+    },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "paragraph",
+      text: "This lab is one of the module projects worth packaging properly: 2026 hiring guides specifically cite an agent with persistent long-term memory — **including conflict resolution between contradicting facts and defense against memory-injection attacks** — as a high-value portfolio project, and hiring managers look at GitHub before the résumé. Two or three deep, evaluated projects beat a pile of shallow demos; make this one of them.",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo** — an asciinema recording or GIF of the three-session demo script: facts taught, fresh process recalls them, contradiction resolved. A reviewer should see it work without cloning anything.",
+        "**Evidence of memory-conflict resolution** — show the `superseded_by` chain for the session-3 contradiction: both timestamped facts, the conflict flag in the log, and the agent preferring the newer one at recall. This is the first of the two things the hiring guides call out by name.",
+        "**Evidence of injection defense** — the red-team test output, with the layered verdicts (quarantine vs reject) and a one-paragraph explanation of why the provenance gate catches phrasings the classifier has never seen. This is the second.",
+        '**An honest "Limitations" section** — what your write path would miss (e.g. an attack phrased as a first-person user preference, cross-session slow-drip facts), where brute-force cosine stops scaling, what you didn\'t build (TTLs? hard-delete cascade?). Candor here reads as seniority, not weakness.',
+        '**Eval numbers, not adjectives** — injection payloads blocked (n/n), cross-session recall accuracy on your demo facts, the compaction test passing; if you did the recall-quality stretch goal, report its precision/recall. "Robust memory" is a claim; a table is evidence.',
+      ],
     },
   ],
   acceptanceCriteria: [

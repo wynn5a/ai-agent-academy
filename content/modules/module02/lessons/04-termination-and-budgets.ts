@@ -161,6 +161,78 @@ def best_effort(messages, reason: str) -> dict:
             "complete": False, "stop_reason": reason}`,
       explanation:
         "Three design points. (1) The `finish` tool turns 'the model went quiet' into a structured, citation-bearing artifact — and lets you *reject* endings that lack citations. (2) The budget check sits at the **top** of the loop, so exhaustion is detected before spending. (3) `best_effort` makes one final tool-free call — a caller gets `{complete: false, stop_reason: ...}` instead of a stack trace. One subtlety: the message array must end in an API-legal state (every `tool_use` answered) before the wrap-up call, which the loop guarantees since results are appended in the same iteration.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+
+FINISH_TOOL = {
+    "type": "function",
+    "name": "finish",
+    "description": (
+        "Submit your final answer. Call exactly once, when you have enough "
+        "evidence. Every claim must cite a file path you actually read."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "answer": {"type": "string"},
+            "citations": {"type": "array", "items": {"type": "string"},
+                          "description": "file paths supporting the answer"},
+        },
+        "required": ["answer", "citations"],
+    },
+}
+
+def run(question: str, budget: Budget) -> dict:
+    input_items = [{"role": "user", "content": question}]
+    while True:
+        reason = budget.exhausted()
+        if reason is not None:                    # check BEFORE paying
+            return best_effort(input_items, reason)
+
+        resp = client.responses.create(
+            model=MODEL, input=input_items, tools=TOOLS + [FINISH_TOOL],
+        )
+        budget.add_call(resp.usage)
+
+        calls = [item for item in resp.output if item.type == "function_call"]
+        finish = next((c for c in calls if c.name == "finish"), None)
+        if finish is not None:
+            args = json.loads(finish.arguments)
+            return {"answer": args["answer"],
+                    "citations": args["citations"],
+                    "complete": True}
+
+        if not calls:
+            # model stopped talking without calling finish — nudge once
+            input_items += resp.output
+            input_items.append({"role": "user", "content":
+                "Call the finish tool with your answer and citations."})
+            continue
+
+        input_items += resp.output                # echo the calls back
+        for call in calls:                        # then answer every one
+            input_items.append({
+                "type": "function_call_output",
+                "call_id": call.call_id,
+                "output": execute(call),          # lesson 5
+            })
+
+def best_effort(input_items, reason: str) -> dict:
+    """Budget is gone. One last cheap call, NO tools, to salvage an answer."""
+    wrap_up = input_items + [{"role": "user", "content":
+        "Budget exhausted (" + reason + "). Using only what you have "
+        "already found, give your best answer and state explicitly what "
+        "you could not verify."}]
+    resp = client.responses.create(model=MODEL, input=wrap_up)
+    return {"answer": resp.output_text, "citations": [],
+            "complete": False, "stop_reason": reason}`,
+          explanation:
+            "The loop structure, top-of-loop budget check, nudge, and best-effort fallback are identical; what inverts is termination detection — no `function_call` items in `resp.output` means 'model went quiet' (there is no `stop_reason`) — and `budget.add_call(resp.usage)` works unchanged because both SDKs name the fields `usage.input_tokens`/`usage.output_tokens`. The same legality rule applies: every echoed `function_call` needs its `function_call_output` before the next call.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -198,6 +270,12 @@ def best_effort(messages, reason: str) -> dict:
       text: 'The LLM call isn\'t the only thing that burns time — a `grep` over a huge repo or a slow network tool can eat the deadline while the budget object sleeps. Give each tool execution its own timeout (a few seconds), and return "tool timed out" as an error result so the model can adapt. Latency budget = LLM time + tool time; meter both.',
     },
     {
+      type: "callout",
+      kind: "career",
+      title: "What separates senior candidates",
+      text: 'Anyone can demo the loop; **termination and budget discipline is what separates senior candidates in agent system-design interviews**. When an interviewer sketches an agent and asks "what stops it?" or "what does a run cost?", volunteering the layered guards unprompted — finish tool, iteration cap, dollar budget, wall-clock deadline, all checked *before* each call — and then defending the actual numbers from trace percentiles is the difference between a mid-level and a senior read. The drills below are rehearsal for exactly that exchange.',
+    },
+    {
       type: "heading",
       text: "Whiteboard drills",
     },
@@ -205,7 +283,7 @@ def best_effort(messages, reason: str) -> dict:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"How do you pick the actual numbers — 15 iterations, $0.50, 60 seconds? Defend them.\"",
+        '**Drill:** "How do you pick the actual numbers — 15 iterations, $0.50, 60 seconds? Defend them."',
       answer:
         "Never from intuition — **from trace percentiles**. Run the agent on a representative task set (or the first weeks of production traffic), plot iterations/cost/latency for *successful* runs, and set each cap at roughly p95–p99 of success plus margin. The reasoning to say out loud: a cap below p95 truncates runs that were about to succeed (you pay most of the cost and throw away the answer — the worst outcome); a cap far above p99 only bounds pathology, which is fine — that's its job. Different budgets serve different masters: the *deadline* comes from the product SLA (a user waiting tolerates 30s; a nightly job tolerates 30min), the *dollar cap* from unit economics (cost per resolved ticket must beat the human alternative), the *iteration cap* is the cheap backstop behind both. And they're per-task-shape, not global — 'summarize this file' and 'find the regression' deserve different envelopes. Close with the operational bit: log which guard fired in every termination record, and **alert when the exhaustion *rate* shifts** — a jump in budget-kills after a deploy means the task got harder or a tool got slower, and the budget just told you. **Follow-up probe:** \"a cap trips on 20% of runs — raise it?\" → first split those runs by outcome; if they were converging, raise it, but if they were spiraling, the fix is Lesson 5's defenses, and raising the cap just buys the spiral more rope.",
     },

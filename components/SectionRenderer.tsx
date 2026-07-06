@@ -39,6 +39,12 @@ const CALLOUT_STYLES: Record<
     label: "Key insight",
     icon: "◆",
   },
+  career: {
+    border: "border-rose-400/40",
+    bg: "bg-rose-400/5",
+    label: "Hiring signal",
+    icon: "◈",
+  },
 };
 
 export default function SectionRenderer({ sections }: { sections: Section[] }) {
@@ -101,6 +107,8 @@ export default function SectionRenderer({ sections }: { sections: Section[] }) {
                 title={s.title}
                 code={s.code}
                 explanation={s.explanation}
+                provider={s.provider}
+                variants={s.variants}
               />
             );
           case "table":

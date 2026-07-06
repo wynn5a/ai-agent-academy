@@ -65,6 +65,46 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
     return f"stored #{new_id}"`,
       explanation:
         'The two thresholds carve embedding space into three zones: duplicate (skip), same-topic (escalate to the LLM judge — cosine similarity alone cannot tell "deploys on Fridays" from "no longer deploys on Fridays"; they embed *close*), and unrelated (store). Superseding rather than deleting preserves history: if the resolution was wrong, the evidence still exists.',
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `DUP_THRESHOLD = 0.90      # near-identical: skip
+TOPIC_THRESHOLD = 0.70    # same topic: check for contradiction
+
+def judge_contradiction(new_fact: str, old_fact: str) -> str:
+    resp = client.responses.create(
+        model="gpt-5.5",
+        input=[{"role": "user", "content":
+            "Do these two statements contradict each other? "
+            "Answer only CONTRADICTS or COMPATIBLE.\\n"
+            f"A: {old_fact}\\nB: {new_fact}"}],
+    )
+    return resp.output_text.strip().upper()
+
+def write_fact(store: MemoryStore, candidate: dict) -> str:
+    vec = encoder.encode(candidate["fact"], normalize_embeddings=True)
+    for mem in store.all_active():
+        sim = float(vec @ mem["vec"])
+        if sim >= DUP_THRESHOLD:
+            return f"skipped duplicate of #{mem['id']}"
+        if sim >= TOPIC_THRESHOLD:
+            if judge_contradiction(candidate["fact"], mem["fact"]) == "CONTRADICTS":
+                new_id = store.add(candidate["fact"], candidate["provenance"],
+                                   candidate["importance"])
+                store.db.execute(
+                    "UPDATE memories SET superseded_by = ? WHERE id = ?",
+                    (new_id, mem["id"]))
+                store.db.commit()
+                log_conflict(old=mem, new_id=new_id)   # surface, don't hide
+                return f"stored #{new_id}, superseded #{mem['id']} (conflict flagged)"
+    new_id = store.add(candidate["fact"], candidate["provenance"],
+                       candidate["importance"])
+    return f"stored #{new_id}"`,
+          explanation:
+            "`write_fact` is provider-neutral — it only touches the embedding encoder and SQLite — so the entire gauntlet ports unchanged. Only the judge call differs: `responses.create` with `resp.output_text` instead of `messages.create` and content blocks, and no required output cap (Anthropic's `max_tokens=10` forces terseness at the API level; here the one-word constraint lives in the prompt).",
+        },
+      ],
     },
     {
       type: "table",
@@ -94,6 +134,11 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
     },
     {
       type: "callout",
+      kind: "career",
+      text: "An agent with **persistent long-term memory — including conflict resolution between contradicting facts** — is a specifically-cited high-value portfolio project in 2026 hiring guides (the other half, defense against memory-injection attacks, is Lesson 5). The part reviewers actually inspect is this lesson's write-path gauntlet: a resolution-options table like the one above, a `superseded_by` chain they can query, and a demo where a fact changes and the agent visibly prefers the newer version. Hiring managers look at GitHub before the résumé, and 2–3 deep, evaluated projects beat a pile of shallow demos — Lab 04 packages exactly this.",
+    },
+    {
+      type: "callout",
       kind: "warning",
       title: "Delete is the lifecycle's third verb",
       text: "Everything above versions rather than deletes — by design, superseding preserves the evidence a wrong resolution needs. But \"never truly delete\" collides with a real requirement: GDPR-style right-to-erasure means a user (or a legal request) can demand a fact be actually gone, not superseded-and-retained. Treat these as two different operations with two different triggers: **supersede** is a business-logic event (a fact changed) and stays the default; **hard delete** is a compliance event (this specific data must not exist anymore) and must cascade — the row, its embedding, any log line that echoed the fact verbatim, and any backup that hasn't rolled off retention. A memory system that can version but can't truly erase isn't finished; Lesson 5 picks this up as a security and retention concern, not just a data-modeling one.",
@@ -102,7 +147,7 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
       type: "exercise",
       kind: "spot-the-bug",
       prompt:
-        "Two overlapping sessions for the same user run concurrently against the same `MemoryStore`. Both extract the candidate fact \"user deploys on Fridays\" within the same second and both call `write_fact`. Walk through what happens, and name the bug.",
+        'Two overlapping sessions for the same user run concurrently against the same `MemoryStore`. Both extract the candidate fact "user deploys on Fridays" within the same second and both call `write_fact`. Walk through what happens, and name the bug.',
       answer:
         "`write_fact` reads `store.all_active()` fresh, computes similarity against the *current* rows, and only calls `store.add()` if nothing scores ≥ `DUP_THRESHOLD`. With two concurrent callers, both read the active set **before either write has landed** — a classic check-then-act race. Both see 'no duplicate exists,' both proceed to `store.add()`, and you end up with two near-identical rows that will only get reconciled on some *future* write's dedupe check, not this one. In the meantime, `recall()` can return both, and a stingy top-k might present the same fact twice while crowding out something else. This isn't a hypothetical for busy agents — any product where a user can have two sessions open (a web tab and a mobile app, or two background jobs touching the same account) hits it. Fixes, cheapest first: serialize writes per user (a lock or a single-writer queue in front of the store — the simplest fix for most products' actual concurrency level); or push the uniqueness check into the database as a real constraint plus a transaction with adequate isolation, so the check-then-act happens atomically instead of in application code; or accept the duplicate and let a periodic reconciliation pass merge near-identical rows. What doesn't work: adding more application-level 'check again before inserting' code, since that just narrows the race window without closing it.",
     },
@@ -187,7 +232,7 @@ memories = [m["fact"] for m in recall(store, current_task_description)]`,
       rows: [
         [
           "Injection at session start (this lesson)",
-          "Small, cheap-to-score memory sets per user (tens to low hundreds of facts) where \"probably relevant to any task\" is a safe bet",
+          'Small, cheap-to-score memory sets per user (tens to low hundreds of facts) where "probably relevant to any task" is a safe bet',
           "Pays the retrieval cost on every session even when memory turns out irrelevant that turn; doesn't scale to memory stores too large to score cheaply up front",
         ],
         [
@@ -199,7 +244,7 @@ memories = [m["fact"] for m in recall(store, current_task_description)]`,
     },
     {
       type: "paragraph",
-      text: "The same relevance/recency/importance scoring from this lesson applies either way — injection scores everything and takes the top-k up front, retrieval-as-a-tool scores against the query the model actually issues. A hybrid is common in practice: inject a handful of the highest-importance standing facts (the procedural \"always lints before committing\" kind), and expose the rest via a tool for anything more specific.",
+      text: 'The same relevance/recency/importance scoring from this lesson applies either way — injection scores everything and takes the top-k up front, retrieval-as-a-tool scores against the query the model actually issues. A hybrid is common in practice: inject a handful of the highest-importance standing facts (the procedural "always lints before committing" kind), and expose the rest via a tool for anything more specific.',
     },
     {
       type: "callout",

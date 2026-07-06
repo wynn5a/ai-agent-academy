@@ -115,6 +115,8 @@ def judge(question: str, multi_ans: str, single_ans: str) -> dict:
         a, b, mapping = multi_ans, single_ans, {"A": "multi", "B": "single"}
     else:
         a, b, mapping = single_ans, multi_ans, {"A": "single", "B": "multi"}
+    # judge model: init_chat_model("anthropic:claude-sonnet-5")
+    #          or: init_chat_model("openai:gpt-5.5") — same rubric either way
     verdict = call_judge_model(JUDGE_PROMPT.format(
         question=question, a=a, b=b))          # structured output, JSON schema
     verdict["winner"] = mapping.get(verdict["winner"], "tie")
@@ -150,7 +152,7 @@ def judge(question: str, multi_ans: str, single_ans: str) -> dict:
     },
     {
       type: "paragraph",
-      text: "The \"Justified when…\" table above tells you the three legitimate reasons; this is the protocol for finding out whether *your* system actually has one of them, instead of pattern-matching an architecture diagram to a vague feeling that \"this task feels like it needs a team.\" Measure the single agent first, on the real workload, before designing a single node of a multi-agent replacement.",
+      text: 'The "Justified when…" table above tells you the three legitimate reasons; this is the protocol for finding out whether *your* system actually has one of them, instead of pattern-matching an architecture diagram to a vague feeling that "this task feels like it needs a team." Measure the single agent first, on the real workload, before designing a single node of a multi-agent replacement.',
     },
     {
       type: "table",

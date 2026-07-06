@@ -92,6 +92,41 @@ def release_notes(diff: str) -> str:
     )`,
       explanation:
         "Each step does one small thing, so each is individually promptable, testable, and swappable (step 3 could run on a cheaper model). The **gate** between steps is plain Python — you can log it, unit-test it, and it never hallucinates. Compare debugging this to debugging an agent that 'sometimes writes bad release notes': here you inspect three intermediate strings and know exactly which step broke.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `def ask(prompt: str) -> str:
+    resp = client.responses.create(
+        model=MODEL,
+        input=prompt,        # string shorthand for a single user turn
+    )
+    return resp.output_text
+
+def release_notes(diff: str) -> str:
+    # Step 1: extract (small, focused, checkable)
+    changes = ask(
+        "List every user-facing change in this diff as terse bullet points. "
+        "If there are none, output exactly: NONE.\\n\\nDiff:\\n" + diff
+    )
+
+    # GATE: deterministic code between LLM steps. No model call needed
+    # to decide the branch — this is what makes workflows debuggable.
+    if changes.strip() == "NONE":
+        return "No user-facing changes in this release."
+
+    # Step 2: draft from the extraction, not the raw diff
+    draft = ask("Write release notes from these changes:\\n\\n" + changes)
+
+    # Step 3: adapt for audience
+    return ask(
+        "Rewrite these release notes for non-technical customers. "
+        "Under 150 words, no jargon:\\n\\n" + draft
+    )`,
+          explanation:
+            "`resp.output_text` aggregates all text output so no block iteration is needed, and `max_tokens` is optional on OpenAI where Anthropic requires it — the gates, the workflow's whole point, are provider-independent Python.",
+        },
+      ],
     },
     {
       type: "code",
@@ -133,6 +168,52 @@ def handle(request: str) -> str:
     return handlers[verdict["category"]](request)`,
       explanation:
         "Routing's payoff is **separation of concerns**: each handler gets a prompt, tool set, and model tier optimized for its category, instead of one bloated do-everything prompt. The `enum` makes the classification a closed set, and returning a confidence lets you route uncertainty to humans. Note this whole system contains five LLM touchpoints and zero agent loops.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+
+ROUTE_TOOL = {
+    "type": "function",
+    "name": "route",
+    "description": "Classify the incoming support request.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "category": {
+                "type": "string",
+                "enum": ["refund", "bug_report", "how_to", "other"],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+        "required": ["category", "confidence"],
+    },
+}
+
+def handle(request: str) -> str:
+    resp = client.responses.create(
+        model=MODEL,
+        tools=[ROUTE_TOOL],
+        tool_choice={"type": "function", "name": "route"},
+        input=[{"role": "user", "content": "Route this request:\\n" + request}],
+    )
+    call = next(item for item in resp.output if item.type == "function_call")
+    verdict = json.loads(call.arguments)
+    if verdict["confidence"] < 0.7:
+        return escalate_to_human(request)        # cheap honesty beats guessing
+
+    handlers = {
+        "refund": run_refund_workflow,     # strict chain w/ payment tools
+        "bug_report": run_triage_chain,    # extract repro -> severity -> ticket
+        "how_to": answer_from_docs,        # RAG on a cheaper model
+        "other": escalate_to_human,
+    }
+    return handlers[verdict["category"]](request)`,
+          explanation:
+            "Same forced classification trick; the schema lives under `parameters` instead of `input_schema`, and the verdict comes back as a JSON string in `call.arguments` rather than Anthropic's pre-parsed `block.input` dict.",
+        },
+      ],
     },
     {
       type: "paragraph",

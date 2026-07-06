@@ -35,6 +35,32 @@ resp = client.messages.create(
 )`,
       explanation:
         "Put media blocks **before** the text that asks about them. Images are billed as input tokens, and the count scales with resolution.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import base64
+
+img_b64 = base64.standard_b64encode(open("error.png", "rb").read()).decode()
+
+resp = client.responses.create(
+    model="gpt-5.5",
+    input=[{
+        "role": "user",
+        "content": [
+            {"type": "input_image",
+             "image_url": f"data:image/png;base64,{img_b64}"},
+            # or, if it's already hosted:
+            # {"type": "input_image", "image_url": "https://..."},
+            {"type": "input_text",
+             "text": "What's the error in this screenshot, and the likely fix?"},
+        ],
+    }],
+)`,
+          explanation:
+            "OpenAI folds base64 into a `data:` URL on a single `image_url` field (one shape for hosted and inline images) instead of Anthropic's typed `source` object, and text blocks are `input_text`.",
+        },
+      ],
     },
     {
       type: "paragraph",
@@ -81,6 +107,46 @@ resp = client.messages.create(
 )`,
       explanation:
         "Notice the combo: a `document` block **plus** structured outputs from Lesson 4 — multimodal extraction with a guaranteed shape is the pattern behind half of real-world document automation. Know the concrete limits: requests cap around **32 MB**, PDFs at roughly **600 pages** on large-context models (about 100 on smaller ones), and the base64 string must have no newlines. Count tokens on big documents before sending — a long PDF bills both its text layer and its rendered pages.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `pdf_b64 = base64.standard_b64encode(open("invoice.pdf", "rb").read()).decode()
+
+resp = client.responses.create(
+    model="gpt-5.5",
+    text={"format": {"type": "json_schema", "name": "invoice",
+                     "strict": True, "schema": {
+        "type": "object",
+        "properties": {
+            "line_items": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "qty": {"type": "integer"},
+                    "unit_price": {"type": "number"},
+                },
+                "required": ["description", "qty", "unit_price"],
+                "additionalProperties": False,
+            }},
+        },
+        "required": ["line_items"],
+        "additionalProperties": False,
+    }}},
+    input=[{
+        "role": "user",
+        "content": [
+            {"type": "input_file", "filename": "invoice.pdf",
+             "file_data": f"data:application/pdf;base64,{pdf_b64}"},
+            {"type": "input_text", "text": "Extract every line item."},
+        ],
+    }],
+)
+data = json.loads(resp.output_text)`,
+          explanation:
+            "PDFs go in as `input_file` blocks (base64 via a `data:` URL in `file_data`, vs Anthropic's `document` + `source` object), and the guaranteed shape comes from `text.format` instead of `output_config.format` — same document-plus-schema pattern.",
+        },
+      ],
     },
     {
       type: "paragraph",
@@ -107,6 +173,28 @@ resp = client.beta.messages.create(
 )`,
       explanation:
         "Rule of thumb: **inline base64** for one-off inputs, **URL** for already-hosted images, **Files API** for anything reused across requests or sessions. The file content still counts as input tokens each call — the Files API saves upload bandwidth and request size, not token cost (prompt caching handles that part).",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `# upload once
+f = client.files.create(file=open("handbook.pdf", "rb"), purpose="user_data")
+
+# reference by id in any later request — no re-upload, no base64
+resp = client.responses.create(
+    model="gpt-5.5",
+    input=[{
+        "role": "user",
+        "content": [
+            {"type": "input_file", "file_id": f.id},
+            {"type": "input_text", "text": "What does the vacation policy say?"},
+        ],
+    }],
+)`,
+          explanation:
+            'OpenAI\'s Files API is GA (no beta header): upload with `purpose="user_data"`, then reference the `file_id` inside an `input_file` block.',
+        },
+      ],
     },
     {
       type: "exercise",
@@ -132,7 +220,7 @@ resp = client.beta.messages.create(
       prompt:
         "**Drill:** Design the 10K-invoices/day extraction pipeline end-to-end — components, model choice, cost ballpark, and failure handling. This is the capstone question for everything in Module 1.",
       answer:
-        "**Shape**: invoices arrive during the day, results needed next morning → throughput problem → **Batch API** (50% off). **Per invoice**: a `document` block + **native structured outputs** with a line-items schema (`additionalProperties: false`, enums where possible), on the **small/fast tier** — extraction is exactly what it's for. **Validation layer** (Lesson 4): Pydantic checks the constrained decoder can't make — quantities positive, `sum(line_items) == total` (the killer check: the *document itself* provides ground truth) — failures go to a feedback-retry pass, then escalate to the workhorse tier, then to a human queue. **Cost math aloud**: ~3 pages ≈ 5–8K tokens in, ~500 out → 10K × ~7K = 70M input tokens/day; at ~$1/MTok halved by batch ≈ **$35–40/day** plus ~$12 output — say that unit-economics sentence unprompted and you've cleared the bar. **Ops**: `custom_id` = invoice id, per-item failure handling since batch results succeed/fail individually, morning completion check with a real-time fallback lane, and the Lesson 5 log line per item. **Follow-up probes**: \"invoices are scanned faxes?\" → same API path (the model reads rendered pages), but expect more validation failures — budget a higher escalation rate; \"a 900-page contract?\" → over the page cap: split client-side and merge results.",
+        '**Shape**: invoices arrive during the day, results needed next morning → throughput problem → **Batch API** (50% off). **Per invoice**: a `document` block + **native structured outputs** with a line-items schema (`additionalProperties: false`, enums where possible), on the **small/fast tier** — extraction is exactly what it\'s for. **Validation layer** (Lesson 4): Pydantic checks the constrained decoder can\'t make — quantities positive, `sum(line_items) == total` (the killer check: the *document itself* provides ground truth) — failures go to a feedback-retry pass, then escalate to the workhorse tier, then to a human queue. **Cost math aloud**: ~3 pages ≈ 5–8K tokens in, ~500 out → 10K × ~7K = 70M input tokens/day; at ~$1/MTok halved by batch ≈ **$35–40/day** plus ~$12 output — say that unit-economics sentence unprompted and you\'ve cleared the bar. **Ops**: `custom_id` = invoice id, per-item failure handling since batch results succeed/fail individually, morning completion check with a real-time fallback lane, and the Lesson 5 log line per item. **Follow-up probes**: "invoices are scanned faxes?" → same API path (the model reads rendered pages), but expect more validation failures — budget a higher escalation rate; "a 900-page contract?" → over the page cap: split client-side and merge results.',
     },
     {
       type: "exercise",

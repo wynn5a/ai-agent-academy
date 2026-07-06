@@ -51,6 +51,23 @@ def run_turn(messages, budget):
       explanation:
         "Design decisions that matter: tool errors are **returned as strings** (with `is_error: true`) so the model can recover; the calculator must not `eval()` arbitrary input; the loop needs a max-iteration guard so a confused model can't spin forever.",
     },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "paragraph",
+      text: "This lab is the first artifact in your portfolio, and hiring managers routinely look at a candidate's GitHub before the résumé — 2–3 deep, evaluated projects beat a pile of shallow demos. Package it so a reviewer gets the signal in one minute:",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo**: a GIF or asciinema recording of the multi-step question (`read_file` → `calculator` → answer) plus copy-paste run instructions. Reviewers rarely clone the repo — the demo IS the first impression.",
+        "**Reported numbers**: test pass count from `test_agent.py`, tokens + estimated cost for a typical session, and observed retry behavior under a simulated 429. Real measured numbers signal you ran and verified it, not just wrote it.",
+        '**An honest "Limitations" section**: e.g. what expressions the calculator can\'t parse, the single-directory file sandbox, no conversation persistence across runs. Stated limitations read as engineering judgment, not weakness — and their absence is what reviewers notice.',
+        "**A trace or screenshot of it working**: one full multi-tool transcript (assistant tool call → tool result → final answer, with the token/cost report) so a reviewer can verify the loop without running anything.",
+      ],
+    },
   ],
   acceptanceCriteria: [
     "Raw SDK only (anthropic or openai package) — no LangChain or agent frameworks",

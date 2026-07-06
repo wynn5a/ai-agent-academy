@@ -65,7 +65,7 @@ def run_eval(eval_set_path: str, report_path: str) -> None:
     # for each config (dense/bm25/hybrid/hybrid+rerank):
     #   precision@5, recall@5, MRR over the eval set
     # for the best config: faithfulness + answer relevance (RAGAS or
-    # your own LLM-as-judge with model="claude-sonnet-5")
+    # your own LLM-as-judge — claude-sonnet-5 or gpt-5.5)
     # write eval_report.md: metrics table + 'what I'd improve' section
     ...`,
       explanation:
@@ -74,6 +74,19 @@ def run_eval(eval_set_path: str, report_path: str) -> None:
     {
       type: "paragraph",
       text: '**The eval report is the deliverable.** The committed `eval_report.md` is what separates this from every tutorial RAG repo: a table of precision@5 / recall@5 / MRR for **dense-only vs. BM25-only vs. hybrid vs. hybrid+rerank**, faithfulness and answer relevance for the best config, and an honest "what I\'d improve" section. Your practical test is presenting this report to Claude as if to a hiring panel — be ready to defend the chunking parameters and fusion choice **with your own numbers**, not folklore.',
+    },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo**: one architecture diagram, one `ingest` + `ask` command pair with real output (a cited answer), and a short GIF or asciinema recording. A reviewer should see the pipeline work before reading a single paragraph.",
+        "**Eval report front and center**: link `eval_report.md` from the top of the README and surface the headline numbers there — retrieval precision@5/recall@5 per config and faithfulness for the best one. The metrics table *is* the project; don't bury it below setup instructions.",
+        "**An honest \"Limitations\" section**: what the eval set doesn't cover (multi-hop? multilingual? table-heavy PDFs?), where the pipeline still fails, and what you'd build next. Candid limitations read as seniority; a repo claiming perfection reads as a tutorial clone.",
+        "**Hiring managers check GitHub before the résumé** — pin this repo, make the description one crisp sentence with your best metric in it, and keep the commit history readable. One deep, evaluated project beats five shallow demos.",
+      ],
     },
   ],
   acceptanceCriteria: [

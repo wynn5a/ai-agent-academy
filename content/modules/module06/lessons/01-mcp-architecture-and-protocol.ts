@@ -145,6 +145,11 @@ export const lesson01: Lesson = {
       text: "Put a number on the combinatorics: 5 agent hosts (Claude Desktop, Claude Code, your IDE plugin, a Slack bot, an internal ops console) each wanting to reach 20 tool providers (GitHub, Jira, your CRM, ...) is 100 bespoke integrations without a shared protocol — every pair reinvents auth, retries, error shapes, and schema conventions. With MCP each host writes one client (5) and each provider writes one server (20): 25 components instead of 100, and the count grows additively, not multiplicatively, as either side adds a member. That's the whole economic argument in one line: **standardization turns multiplication into addition.** The actual product of standardizing the wire is more specific than 'fewer lines of code': a server you write once is usable, unmodified, by any compliant host — including hosts that don't exist yet — and a host you build once can adopt any server on the ecosystem without writing a line of provider-specific glue. That's what 'client-agnostic tools' and 'reusable servers' mean in practice, and it's why a GitHub MCP server built by GitHub itself works unmodified in Claude Desktop, Claude Code, and a dozen other hosts.",
     },
     {
+      type: "callout",
+      kind: "career",
+      text: 'MCP and the Agent-to-Agent (A2A) protocol are now explicitly named in 2026 job postings, typically under an "LLM APIs & protocols" requirement line — this module is one of the most directly screenable things in the curriculum. Tool and API integration is also one of the most consistently recurring responsibilities in agent-engineer job descriptions, and the whiteboard version of it is exactly what this lesson covers: the host/client/server split, the N×M → N+M argument, and where credentials live. Expect to be asked all three.',
+    },
+    {
       type: "heading",
       text: "What MCP deliberately does not solve",
     },
@@ -172,7 +177,7 @@ export const lesson01: Lesson = {
       type: "exercise",
       kind: "predict",
       prompt:
-        "**Predict:** A client sends `initialize` with `\"protocolVersion\": \"2024-11-05\"`. The server only supports `\"2025-03-26\"` and later. What should a well-behaved server do, and what's the failure mode if it instead just replies with its own latest version and proceeds?",
+        '**Predict:** A client sends `initialize` with `"protocolVersion": "2024-11-05"`. The server only supports `"2025-03-26"` and later. What should a well-behaved server do, and what\'s the failure mode if it instead just replies with its own latest version and proceeds?',
       answer:
         "A well-behaved server detects the unsupported version and returns an error for `initialize` (or negotiates down to the latest version it shares with the client, if a shared version exists) rather than silently proceeding — the client needs an explicit signal that the versions don't match, because it's the one that decided which version to open with. If the server instead just replies with `2025-03-26` and moves on, the client is now speaking a version it never agreed to: it may fail to parse fields the newer version added, silently ignore capabilities it doesn't recognize, or misinterpret a field that changed shape between versions and send malformed `tools/call` requests the server rejects deep into the session — long after the point where the mismatch was cheap to catch. The general principle: version-negotiation failures should surface at the handshake, loudly, not downstream as a mysterious tools/call error five minutes into a demo.",
     },
@@ -184,7 +189,7 @@ export const lesson01: Lesson = {
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your team is debating whether to build a bespoke internal tool-calling layer instead of adopting MCP for a new agent product. Make the case for MCP — and steelman the case against it.\"",
+        '**Drill:** "Your team is debating whether to build a bespoke internal tool-calling layer instead of adopting MCP for a new agent product. Make the case for MCP — and steelman the case against it."',
       answer:
         "For MCP: reuse across hosts and tool providers you don't control yet (the N+M argument), a growing ecosystem of pre-built servers (GitHub, Slack, Jira, filesystems) you get for free instead of writing and maintaining, and a spec that's already solved the boring but easy-to-get-wrong parts — capability negotiation, in-band error signaling, session lifecycle. Steelman against: if you have exactly one host and a handful of internal-only tools you'll never expose to a second host or reuse across products, a protocol layer is pure overhead — you pay JSON-RPC framing, transport plumbing, and a spec you don't control, for zero N+M benefit because N=M=1. The honest trigger for adopting MCP isn't 'tools exist,' it's 'more than one host will use these tools, or these tools should be reusable by hosts you don't control yet.' A single internal automation script calling three internal APIs doesn't need MCP; a company standardizing how every internal AI feature reaches its APIs does. **Follow-up probe:** \"what if you're not sure whether a second host is coming?\" → default to a plain function-calling layer for the first host, and reach for MCP the moment a second consumer materializes — the migration cost is bounded (you're mostly rewriting docstrings as decorated functions), while premature protocol adoption costs ongoing complexity for a benefit you may never realize.",
     },
@@ -192,7 +197,7 @@ export const lesson01: Lesson = {
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"We just connected our agent to eight new MCP servers and now it calls the wrong tool constantly. Walk me through your diagnosis, in order.\"",
+        '**Drill:** "We just connected our agent to eight new MCP servers and now it calls the wrong tool constantly. Walk me through your diagnosis, in order."',
       answer:
         "First, count total tools now visible across all eight servers — jumping from, say, 10 to 70 is very likely sufficient explanation on its own, since selection accuracy degrades with visible tool count regardless of description quality. Second, look for near-duplicate tools across servers — two servers each exposing a generic `search` tool is a classic collision the model can't disambiguate; rename or scope by prefix. Third, audit descriptions for missing negative guidance — a tool that doesn't say what it's NOT for gets called for adjacent-but-wrong tasks. Fourth, if the count itself is the driver, look for a deferred-loading or tool-search option in the client rather than trying to prompt-engineer around forty always-visible schemas — that's treating a context-bloat problem as a wording problem. Fifth, only after ruling out volume and collisions, treat it as an individual-tool description bug and iterate on that one tool's docstring. The ordering is the interview signal: junior engineers jump straight to step five without checking whether the real cause is that the model is drowning in forty barely-differentiated options. **Follow-up probe:** \"the client has no tool search feature\" → the manual mitigation is curation: split the eight servers into task-scoped bundles and connect only the bundle relevant to the current session, rather than all eight all the time.",
     },

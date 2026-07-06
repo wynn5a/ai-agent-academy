@@ -37,6 +37,7 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "tracing an agent run with Langfuse (decorator + spans)",
+      provider: "claude",
       code: `# Patterns shown are the stable, documented shape; confirm signatures
 # against the current Langfuse docs for your installed version.
 from langfuse import observe, get_client
@@ -75,7 +76,52 @@ def call_model(messages):
     )
     return resp`,
       explanation:
-        "The `@observe` decorator turns ordinary functions into nested spans automatically, so the call tree mirrors your code with no manual plumbing. Marking LLM calls `as_type=\"generation\"` and reporting `usage_details` is what feeds the token and cost views. Attaching `user_id` and tags at the trace level is what later lets you answer 'which user's runs cost the most?' with a filter instead of a grep.",
+        "The `@observe` decorator turns ordinary functions into nested spans automatically, so the call tree mirrors your code with no manual plumbing. Marking LLM calls `as_type=\"generation\"` and reporting `usage_details` is what feeds the token and cost views — Langfuse multiplies the reported tokens by the model's list price (`claude-sonnet-5` runs $3/1M input, $15/1M output at list) to fill the dollar columns. Attaching `user_id` and tags at the trace level is what later lets you answer 'which user's runs cost the most?' with a filter instead of a grep.",
+      variants: [
+        {
+          provider: "openai",
+          code: `# Patterns shown are the stable, documented shape; confirm signatures
+# against the current Langfuse docs for your installed version.
+from langfuse import observe, get_client
+
+langfuse = get_client()
+
+@observe()                                   # wraps the whole run in a trace
+def handle_request(user_id: str, prompt: str) -> str:
+    # Attach identifiers so you can slice traces by user/session later.
+    langfuse.update_current_trace(user_id=user_id, tags=["support-agent"])
+    messages = [{"role": "user", "content": prompt}]
+    return agent_loop(messages)
+
+@observe()                                   # each loop turn nests as a span
+def agent_loop(messages) -> str:
+    while True:
+        resp = call_model(messages)          # itself observed (below)
+        calls = [it for it in resp.output if it.type == "function_call"]
+        if not calls:
+            return resp.output_text
+        messages += resp.output              # echo the model's turn back
+        messages += run_tools(calls)         # one function_call_output each
+
+@observe(as_type="generation")               # mark LLM calls as generations
+def call_model(messages):
+    resp = client.responses.create(
+        model="gpt-5.5",
+        tools=SCHEMAS, input=messages,
+    )
+    # Report usage so cost/token dashboards populate per generation.
+    langfuse.update_current_generation(
+        model="gpt-5.5",
+        usage_details={
+            "input": resp.usage.input_tokens,
+            "output": resp.usage.output_tokens,
+        },
+    )
+    return resp`,
+          explanation:
+            "The Langfuse plumbing is byte-for-byte identical — only the SDK inside `call_model` and the loop's tool-call check change: the Responses API returns `function_call` items in `resp.output` instead of a `stop_reason`, and both SDKs expose the same `resp.usage.input_tokens` / `resp.usage.output_tokens` field names, which is why `usage_details` doesn't change. Langfuse turns those tokens into dollars from list price (`gpt-5.5` runs $5/1M input, $30/1M output at list, versus `claude-sonnet-5` at $3/$15) — exactly the delta the cost views surface if you A/B providers on the same traffic.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -185,7 +231,7 @@ def run_tool(trace_id, name, args, fn):
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"You have great offline eval coverage — 95% pass rate, stable for months. Convince me you still need production monitoring.\"",
+        '**Drill:** "You have great offline eval coverage — 95% pass rate, stable for months. Convince me you still need production monitoring."',
       answer:
         "Offline evals only answer questions about inputs you already anticipated; a static 95% on a fixed suite says nothing about live drift outside that suite's coverage. Three concrete ways reality moves without your suite noticing: a provider silently updates the model behind a pinned version string, a partner API you depend on changes its response shape, or real user phrasing shifts as a new customer segment onboards — none of these show up until you replay against **current** reality, and your offline suite by definition only replays against the reality that existed when you wrote it. The structural answer: run a canary set on a schedule so a provider-side change surfaces within hours instead of whenever someone happens to re-run the offline suite; watch drift metrics (token-length distributions, tool-call rates, cost-per-run) as leading indicators, since these often move before task success visibly drops; and treat user-feedback signals as a cheap tripwire for 'go look,' never a KPI to report alongside the eval score. One line for the interview: offline evals prove the system was correct on the day you tested it; online monitoring is the only thing that tells you it's still correct today. **Follow-up probe:** \"your canary score drops 10% overnight with no deploys on your side\" → check upstream first — the model provider's changelog or incident page, then any pinned dependency that could have silently updated — before assuming your own prompt regressed; a canary catching a provider-side change with zero deploys on your end is the canary doing exactly its job.",
     },
@@ -193,9 +239,9 @@ def run_tool(trace_id, name, args, fn):
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Design the observability stack for a production agent from scratch — what gets traced, what gets dashboarded, what pages someone at 3am?\"",
+        '**Drill:** "Design the observability stack for a production agent from scratch — what gets traced, what gets dashboarded, what pages someone at 3am?"',
       answer:
-        "Layer it by audience and cost. **Traced** (per-run, per-span, always-on): every LLM call and tool call as a span with tokens, cost, latency, model version, stop_reason, and tool name/args/error — the raw material everything else derives from. **Dashboarded** (aggregated, checked daily or weekly by a human making judgment calls, not paging anyone): cost per run/user/day/tool, p50/p95 latency per stage, offline-suite task success and per-step correctness trended over time, and canary-set score trended over time. **Paged** (alerts on the *derivative*, not the absolute value): cost-per-run up X% versus the 7-day median, canary score down beyond a set threshold, per-tool error rate spiking, p95 latency breaching an SLA — alerting on rate-of-change rather than a fixed threshold, because a fixed threshold either never fires as traffic grows or fires constantly as it fluctuates normally. Explicitly exclude from paging: raw thumbs-down counts (too noisy, no clean action attached) and anything without an obvious runbook step — a page nobody can act on trains the team to ignore pages. **Follow-up probe:** \"how do you avoid alert fatigue while still catching real regressions fast?\" → tier it: a canary or cost-derivative breach pages immediately, since the blast radius is small and cheap to check; a soft drift in the eval trend or a feedback-signal shift goes to a daily digest for a human to triage rather than an interrupt — reserve pages for the handful of signals where minutes actually matter.",
+        'Layer it by audience and cost. **Traced** (per-run, per-span, always-on): every LLM call and tool call as a span with tokens, cost, latency, model version, stop_reason, and tool name/args/error — the raw material everything else derives from. **Dashboarded** (aggregated, checked daily or weekly by a human making judgment calls, not paging anyone): cost per run/user/day/tool, p50/p95 latency per stage, offline-suite task success and per-step correctness trended over time, and canary-set score trended over time. **Paged** (alerts on the *derivative*, not the absolute value): cost-per-run up X% versus the 7-day median, canary score down beyond a set threshold, per-tool error rate spiking, p95 latency breaching an SLA — alerting on rate-of-change rather than a fixed threshold, because a fixed threshold either never fires as traffic grows or fires constantly as it fluctuates normally. Explicitly exclude from paging: raw thumbs-down counts (too noisy, no clean action attached) and anything without an obvious runbook step — a page nobody can act on trains the team to ignore pages. **Follow-up probe:** "how do you avoid alert fatigue while still catching real regressions fast?" → tier it: a canary or cost-derivative breach pages immediately, since the blast radius is small and cheap to check; a soft drift in the eval trend or a feedback-signal shift goes to a daily digest for a human to triage rather than an interrupt — reserve pages for the handful of signals where minutes actually matter.',
     },
     {
       type: "keypoints",

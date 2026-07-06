@@ -158,6 +158,11 @@ def run_python(code: str, timeout_s: int = 30) -> str:
       ],
     },
     {
+      type: "callout",
+      kind: "career",
+      text: "Sandboxed code execution is a named skill in 2026 agent-engineer postings — Docker, E2B, and Modal appear by name for roles where agents run generated code. The hiring signal isn't \"I used a sandbox,\" it's being able to pair each isolation property with the attack it blocks (the table above) and to say how you'd *prove* the isolation with a test. Lab 06's sandboxed run_python tool, with its passing socket-connect-must-fail test, is the portfolio artifact that backs the claim.",
+    },
+    {
       type: "heading",
       text: "A2A: the other protocol",
     },

@@ -96,6 +96,23 @@ def evaluate(issue_set) -> dict:
         "Convert it all into Gate G4 material: design answers, five STAR stories with numbers, take-home strategy.",
       ],
     },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "paragraph",
+      text: "Hiring managers reportedly look at GitHub before the résumé — for the roles this curriculum targets, this capstone **is** the résumé. Package it so a reviewer gets the whole story in under five minutes:",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo** — a GIF or short clip of the full path: issue in → agent explores → red→green tests → HITL approval → draft PR out.",
+        "**The PR the agent actually opened** — link a real draft PR with the reviewer-ready description, the small focused diff, and CI showing the reproducing test passing.",
+        "**Eval results across your issue suite** — success rate, the partial-success taxonomy, and median cost/time per issue, straight from your `report()` output.",
+        "**An honest 'Limitations' section** — precise scope, named failure modes from the taxonomy, cost envelope, safety boundaries. Reviewers read it first; it's what makes every other claim credible.",
+      ],
+    },
   ],
   acceptanceCriteria: [
     "Input: accepts a GitHub issue URL or a local issue file (title, body, repro steps)",
@@ -109,7 +126,7 @@ def evaluate(issue_set) -> dict:
   ],
   stretchGoals: [
     "Support multi-file fixes and measure how the wrong-location rate changes versus single-file issues",
-    "Add a cheaper model for exploration and the stronger model only for repair; report the cost/quality trade-off from your traces",
+    "Add a cheaper model for exploration (e.g. claude-haiku-4-5) and the stronger model (claude-sonnet-5 / gpt-5.5) only for repair; report the cost/quality trade-off from your traces",
     "Assemble and rehearse the full Gate G4 package: whiteboard the agent loop, RAG+eval, memory, multi-agent trade-offs, and injection defenses in <5 min each, plus five STAR stories anchored in this project",
   ],
 };

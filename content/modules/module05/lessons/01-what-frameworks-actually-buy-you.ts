@@ -57,6 +57,11 @@ export const lesson01: Lesson = {
       text: "The framework's real product is the **checkpointer**. Everything distinctive about LangGraph — resume after crash, time-travel debugging, durable human-in-the-loop — falls out of one design decision: persist the full graph state after every step. A bare while-loop keeps state in process memory; kill the process and it's gone. That single difference justifies most of the abstraction cost.",
     },
     {
+      type: "callout",
+      kind: "career",
+      text: "LangChain and LangGraph appear among LinkedIn's own most-commonly-listed skills for AI engineer roles — the #1 fastest-growing US job title in LinkedIn's 2026 report — and one job-market analysis found the LangChain ecosystem named in roughly 40% of agentic-AI postings (a single-source estimate, but directionally consistent with everything else). AutoGen and CrewAI are the other frameworks that show up by name. The differentiator in interviews isn't listing frameworks, though: it's this lesson's skill — itemizing the abstraction tax and saying precisely when the checkpointer's guarantees justify paying it.",
+    },
+    {
       type: "heading",
       text: "The LangGraph mental model",
     },
@@ -86,7 +91,9 @@ class State(TypedDict):
 
 
 def write_draft(state: State) -> dict:
-    # call your model here (Module 1 skills); stubbed for clarity
+    # call your model here (Module 1 skills); stubbed for clarity.
+    # in real code: model = init_chat_model("anthropic:claude-sonnet-5")
+    # or:           model = init_chat_model("openai:gpt-5.5")  # one-string swap
     return {"draft": f"Draft answer to: {state['question']}"}
 
 
@@ -181,7 +188,7 @@ for step in graph.stream({"question": "What is a checkpointer?"},
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Convince me frameworks aren't just resume-padding — when do you actually reach for LangGraph over a hand-rolled loop?\"",
+        '**Drill:** "Convince me frameworks aren\'t just resume-padding — when do you actually reach for LangGraph over a hand-rolled loop?"',
       answer:
         "Name concrete triggers, not vibes. I reach for a framework when I need **durable resumability**: a job that must survive a process restart without re-paying for completed work, which means checkpointing keyed by thread ID, not a homegrown pickle-to-disk hack. I reach for it when I need **human-in-the-loop that spans days and processes**: the approval might come from a web request or a Slack bot hours later, and blocking on `input()` doesn't survive that. I reach for it when I need **dynamic fan-out with merge semantics**: N parallel workers whose results need to accumulate into shared state safely, which is exactly what reducers exist for. And I reach for it for the **trace/tooling ecosystem** — streaming per-node updates and callback integrations I'd otherwise build myself. What I don't do is reach for it to avoid writing a 40-line while-loop, or because a blog post said agents need graphs — that's buying lock-in and debugging-through-layers for nothing. The honest framing: a framework is worth its abstraction tax exactly when its checkpointer's guarantees are requirements, not nice-to-haves. **Follow-up probe:** \"your team says 'let's just use LangGraph everywhere so junior engineers ramp faster' — good reason?\" → Ramp speed is real but secondary, and it's backwards if the team doesn't already understand the raw loop: they'll misdiagnose a prompt bug or a tool-calling bug as \"a LangGraph problem\" and go spelunking in the framework's source instead of their own prompt. Teach the hand-rolled loop first — this course's whole structure — then hand them the framework as an accelerant, not a substitute for understanding.",
     },

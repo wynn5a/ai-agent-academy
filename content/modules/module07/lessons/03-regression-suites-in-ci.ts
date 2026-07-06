@@ -143,7 +143,8 @@ jobs:
     {
       type: "code",
       language: "python",
-      title: "before trusting a delta, check whether the intervals even separate",
+      title:
+        "before trusting a delta, check whether the intervals even separate",
       code: `import math
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -200,7 +201,7 @@ def paired_sign_test(baseline_pass: list[bool], candidate_pass: list[bool]) -> d
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your regression suite goes from 79% to 81% pass rate after a prompt change. Ship it or not — walk me through your reasoning.\"",
+        '**Drill:** "Your regression suite goes from 79% to 81% pass rate after a prompt change. Ship it or not — walk me through your reasoning."',
       answer:
         "Don't decide from the aggregate alone. First, size up the noise floor: at a suite of ~50 cases, the confidence intervals around 79% and 81% almost certainly overlap heavily, so a 2-point move is not distinguishable from re-run noise at that sample size. Second, and more decisively, look at the **same cases paired**: how many flipped fail→pass versus pass→fail? A pattern like 3 newly passing and 1 newly failing, with everything else stable, is a much stronger and cheaper signal of real improvement than the aggregate delta — and critically, it also tells you directly whether the change introduced a *new* regression among the flips, which you need to inspect regardless of whether the net direction is positive. If re-running the whole suite once more causes some of those flips to flip back, that's confirmation it's noise, and the fix is to grow the suite or switch to k-sample majority-vote scoring before trusting the number at all. The senior answer in one line: never ship on an unpaired aggregate delta smaller than the suite's noise floor — look at flips, not just the mean. **Follow-up probe:** \"same 2-point delta, but the suite is 500 cases\" → at n=500 the confidence interval is roughly three times tighter than at n=50, so the same 2-point move is far more likely to be real; sample size is doing exactly the statistical work described above, which is why 'grow the suite' is usually a better first move than deeper analysis of a small one.",
     },
@@ -208,7 +209,7 @@ def paired_sign_test(baseline_pass: list[bool], candidate_pass: list[bool]) -> d
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Design the override policy for a CI eval gate — who can merge past a failing regression suite, and why not just remove the gate for urgent fixes?\"",
+        '**Drill:** "Design the override policy for a CI eval gate — who can merge past a failing regression suite, and why not just remove the gate for urgent fixes?"',
       answer:
         "Model it on the same fail-closed discipline as an HITL approval gate. Default is blocking: a red gate stops the merge, full stop. The only path around it is an explicit, logged, named-role action — the prompt's designated owner or an on-call lead, deliberately never the author of the change under review, for the same separation-of-duties reason self-review is weak everywhere else in engineering. Require a one-line justification attached to every override, write it to the same audit trail the eval results already produce, and auto-file a follow-up ticket with a deadline (say, 48 hours) to actually fix or formally accept the failing case, so overrides don't quietly become the normal path. The part worth naming unprompted: removing the gate 'for urgent fixes' is exactly backwards, because urgency is precisely when a rushed prompt edit is most likely to regress something and least likely to get careful manual review — that's the worst possible moment to disable the safety net, and the whole point of an override mechanism is that urgency never has to mean removing the gate. **Follow-up probe:** \"overrides are happening every week\" → that's a signal the gate's threshold or the suite's coverage is miscalibrated, not that the policy is too strict — track override frequency as its own metric, and treat a rising rate as an incident in its own right, not routine friction to route around.",
     },

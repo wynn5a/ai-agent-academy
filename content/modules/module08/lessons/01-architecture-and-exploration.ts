@@ -13,6 +13,12 @@ export const lesson01: Lesson = {
     },
     {
       type: "callout",
+      kind: "career",
+      title: "The capstone-tier project",
+      text: "Hiring guides describe exactly one portfolio project as capstone-tier: an autonomous software-development agent that takes a GitHub issue, understands the codebase, implements a fix, writes tests, and opens a PR with human review before merge. That is this module, verbatim. The context that makes the effort worth it: LinkedIn's Jobs on the Rise 2026 ranks AI Engineer the #1 fastest-growing US job title, and the 'agentic AI' skill cluster grew roughly 280% year over year (~90K US postings). The most-requested skills in those postings — Anthropic/OpenAI tool calling and structured outputs, Docker/E2B-style sandboxing, evals, HITL approval before merge — are exactly what this build exercises.",
+    },
+    {
+      type: "callout",
       kind: "insight",
       title: "Scope is the senior move",
       text: "Do not promise general autonomy. 'Handles simple, well-specified bug-fix issues in Python repos under 10k LOC' is an honest, impressive scope — and stating it that precisely is itself a seniority signal. An agent that reliably does a narrow thing beats one that flakily attempts everything. Your limitations doc starts as this one sentence.",
@@ -66,6 +72,11 @@ export const lesson01: Lesson = {
           "Edit strategy",
           "Search/replace vs. full-file rewrite",
           "Search/replace by default (cheaper, safer diffs); covered next lesson",
+        ],
+        [
+          "Model choice",
+          "One flagship everywhere vs. cheap-explore + strong-repair split",
+          "Start with one strong generalist (`claude-sonnet-5` or `gpt-5.5`); once traces show exploration dominates cost, route it to a cheaper model like `claude-haiku-4-5`. OpenAI's `gpt-5.3-codex` line is specialized for agentic coding and worth benchmarking for the repair stage",
         ],
       ],
     },
@@ -145,8 +156,11 @@ def read_file(rel: str, start: int = 1, end: int = 400) -> str:
       type: "code",
       language: "python",
       title: "the exploration loop producing a checkpointed plan",
+      provider: "claude",
       code: `import json, pathlib
+import anthropic
 
+client = anthropic.Anthropic()
 PLAN_PATH = pathlib.Path("/sandbox/plan.json")
 
 def explore_and_plan(issue_text: str) -> dict:
@@ -159,7 +173,11 @@ def explore_and_plan(issue_text: str) -> dict:
     )
     messages = [{"role": "user", "content": f"Issue:\\n{issue_text}"}]
     while True:
-        resp = call_model(system, EXPLORE_TOOLS, messages)   # search/list/read/record_plan
+        resp = client.messages.create(
+            model="claude-sonnet-5", max_tokens=4096,
+            system=system, tools=EXPLORE_TOOLS,   # search/list/read/record_plan
+            messages=messages,
+        )
         if resp.stop_reason != "tool_use":
             continue
         messages.append({"role": "assistant", "content": resp.content})
@@ -179,6 +197,52 @@ def explore_and_plan(issue_text: str) -> dict:
         messages.append({"role": "user", "content": results})`,
       explanation:
         "The plan is a forced structured output (record_plan is a tool schema, per Module 1) so downstream stages get a typed object, not prose. Persisting it to disk is the checkpoint the README requires: exploration is the expensive part, and a crash during implementation should resume from the plan rather than re-explore. The system prompt's 'do NOT guess, read them' instruction is load-bearing — hallucinated file contents are a top failure mode for coding agents.",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json, pathlib
+from openai import OpenAI
+
+client = OpenAI()
+PLAN_PATH = pathlib.Path("/sandbox/plan.json")
+
+def explore_and_plan(issue_text: str) -> dict:
+    instructions = (
+        "You are a senior engineer triaging a bug. Use search_symbol, "
+        "list_dir, and read_file to locate the relevant code. Do NOT guess "
+        "at file contents — read them. When confident, call record_plan with "
+        "the files you will edit, your understanding of the bug, and the fix "
+        "approach. Read only what you need; the repo is large."
+    )
+    input_items = [{"role": "user", "content": f"Issue:\\n{issue_text}"}]
+    while True:
+        resp = client.responses.create(
+            model="gpt-5.5", instructions=instructions,
+            input=input_items, tools=EXPLORE_TOOLS,   # search/list/read/record_plan
+        )
+        calls = [item for item in resp.output if item.type == "function_call"]
+        if not calls:
+            continue
+        plan = None
+        for call in calls:
+            args = json.loads(call.arguments)   # arguments arrive as a JSON string
+            if call.name == "record_plan":
+                plan = args                     # {"files":[...], "bug":"...", "fix":"..."}
+            else:
+                input_items.append(call)        # echo the call back into the input
+                input_items.append({
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": run_explore_tool(call.name, args),
+                })
+        if plan is not None:
+            # Checkpoint: survives a crash so W22's implement stage can resume.
+            PLAN_PATH.write_text(json.dumps(plan, indent=2))
+            return plan`,
+          explanation:
+            "Same checkpointed-plan design, Responses API mechanics: the system prompt travels as `instructions`, tool schemas use `parameters` (not `input_schema`), tool arguments arrive as a JSON *string* on `item.arguments` (parse them), and results go back as `function_call_output` items keyed by `call_id` — after echoing the `function_call` item itself into the input. The 'still exploring' signal is the presence of `function_call` items in `resp.output`, where the Messages API checks `stop_reason == \"tool_use\"`.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -219,7 +283,7 @@ def explore_and_plan(issue_text: str) -> dict:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your grep-and-read exploration works great on a 10k-LOC repo. Now point it at a 2M-LOC monorepo with 40 services — `search_symbol` for a common name returns thousands of hits. What changes?\"",
+        '**Drill:** "Your grep-and-read exploration works great on a 10k-LOC repo. Now point it at a 2M-LOC monorepo with 40 services — `search_symbol` for a common name returns thousands of hits. What changes?"',
       answer:
         "Treat exploration itself as a bounded, staged search, not a single flat grep. **Narrow before you search:** use issue metadata — a stack trace, a file path in the repro steps, the service named in the ticket — to scope to one service directory before grepping anything; `list_dir` at the service level first, grep within scope second. **Rank and cap results explicitly:** cut `max_results` hard and prefer matches in source over generated/vendor paths (heuristics: skip `node_modules/`, `vendor/`, `dist/`, `*.min.*`), since undifferentiated hit volume is worse than no hits — the model wastes turns skimming junk. **Escalate only past a threshold:** this is where the earlier trade-off flips — if narrowing plus ranking still returns unusable volume, that's the signal a lightweight per-service index (or even a coarse file-level embedding pass) starts earning its keep, so build the escalation as a measured trigger, not a default. **Bound the exploration loop itself:** more services means more plausible-looking dead ends, so cap exploration iterations and cost the same way Module 2 caps the repair loop — a monorepo doesn't get an exemption from termination discipline just because it's bigger. **Follow-up probe:** \"the issue gives no service hint at all\" → then the first move is a cheap classification step — ask a small/cheap model call to guess the likely service from the issue text and repo's top-level directory names — before spending real exploration budget; misrouting the search is cheaper to fix early than to discover after 30 unproductive grep calls.",
     },
@@ -227,7 +291,7 @@ def explore_and_plan(issue_text: str) -> dict:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Walk me through what happens end-to-end when your `read_file` tool is asked to read a 50,000-line generated file — a lockfile or a minified bundle.\"",
+        '**Drill:** "Walk me through what happens end-to-end when your `read_file` tool is asked to read a 50,000-line generated file — a lockfile or a minified bundle."',
       answer:
         "Windowing alone isn't the fix — it's a partial mitigation for the wrong problem. `read_file(start=1, end=400)` happily returns 400 lines of a lockfile's alphabetized package hashes, which costs real context tokens and returns zero signal; the model has to spend a turn reading it, decide it's useless, and try again. The actual fix is upstream: detect generated/vendored files *before* reading them and refuse or redirect — heuristics like path prefixes (`vendor/`, `node_modules/`, `dist/`, `.lock` extensions, `.min.js`), a 'longest line' check (minified code has absurd line lengths), or a leading auto-generated-file banner comment. Return `\"error: <path> looks generated/vendored — search for the specific symbol you need instead of reading the whole file\"` rather than truncated content, which nudges the model back toward `search_symbol`. This is the same discipline Module 2 teaches for termination budgets: iterations aren't the resource, tokens are, and a single bad read can burn as much context as ten good ones. **Follow-up probe:** \"what if the actual bug genuinely lives inside a generated or vendored file?\" → then don't read the whole thing at all — grep for the specific symbol or error string inside it first, and read only a tight windowed region around the hit; the file being large and machine-authored doesn't change the retrieval discipline, it just makes skipping the naive full read more important.",
     },

@@ -77,6 +77,23 @@ def answer(question: str, root: str) -> dict:
       title: "Test the unhappy paths on purpose",
       text: "Before calling it done, force each failure: ask an unanswerable question (budget exhaustion path), point `--root` at a huge repo (truncation path), ask about a file that doesn't exist (error-feedback path), and set max_iterations=2 (degradation path). Each should produce a clean incomplete answer and a trace that tells the story. `jq .event trace.jsonl | sort | uniq -c` is your friend.",
     },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "paragraph",
+      text: "This is a portfolio lab: hiring managers look at your GitHub before your résumé, and 2–3 deep, evaluated projects beat a pile of shallow demos. Package the repo so a reviewer gets the whole story in five minutes:",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo** — one command to install and run, plus a short recording (GIF or asciinema) of a real question → exploration → cited answer, so a reviewer sees it working without cloning anything.",
+        "**Committed traces of the loop** — check in a redacted `trace.jsonl` from a real run and annotate two or three interesting lines in the README (a tool choice, a truncation, the termination record). Hiring managers specifically want to see the inter-step traces, not just the final answer.",
+        "**An honest Limitations section** — where it breaks (huge repos, ambiguous questions, deep dependency chains that blow the budget) and what you'd fix next. Stated limitations read as senior; hidden ones read as demo-ware.",
+        "**Eval/verification evidence** — a small results table (e.g. 10 questions × complete?, iterations, cost, citations valid?) plus the forced unhappy-path runs from the callout above, so every acceptance criterion is demonstrated in the repo, not just claimed.",
+      ],
+    },
   ],
   acceptanceCriteria: [
     "Tools: `list_dir`, `grep`, `read_file` (all with output size caps) and `finish(answer, citations)` — raw SDK only, no frameworks",

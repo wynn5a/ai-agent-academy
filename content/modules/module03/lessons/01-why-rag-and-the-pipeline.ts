@@ -124,6 +124,40 @@ def answer(query: str) -> str:
 print(answer("How do I recover my account?"))`,
       explanation:
         'Twenty lines: embed, retrieve top-k, ground the generation, demand citations, and give the model an explicit *out* ("the corpus does not cover this") so it isn\'t cornered into inventing. Every production RAG system is this skeleton plus better chunking, better retrieval, reranking, and — above all — measurement.',
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `from openai import OpenAI
+import numpy as np
+
+llm = OpenAI()
+
+def retrieve(query: str, k: int = 3) -> list[str]:
+    q = model.encode(query, normalize_embeddings=True)
+    top = np.argsort(doc_vecs @ q)[::-1][:k]
+    return [docs[i] for i in top]
+
+def answer(query: str) -> str:
+    chunks = retrieve(query)
+    context = "\\n\\n".join(f"[{i + 1}] {c}" for i, c in enumerate(chunks))
+    prompt = (
+        "Answer the question using ONLY the numbered context below. "
+        "Cite chunks like [1]. If the context does not contain the answer, "
+        "say 'The corpus does not cover this.' Do not use outside knowledge.\\n\\n"
+        f"Context:\\n{context}\\n\\nQuestion: {query}"
+    )
+    resp = llm.responses.create(
+        model="gpt-5.5",
+        input=[{"role": "user", "content": prompt}],
+    )
+    return resp.output_text
+
+print(answer("How do I recover my account?"))`,
+          explanation:
+            "Identical skeleton — only the generation call changes. OpenAI's Responses API hands you the assembled text as `resp.output_text` (no content-block filtering), and `max_tokens` is optional where Anthropic requires it. The retrieval half is provider-agnostic either way; note that Anthropic ships no embeddings endpoint (its docs recommend Voyage AI) while OpenAI's `text-embedding-3-large` could replace the local model here.",
+        },
+      ],
     },
     {
       type: "callout",
@@ -158,7 +192,7 @@ print(answer("How do I recover my account?"))`,
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Context windows are a million tokens now. Convince me RAG isn't dead.\" — give the four-part answer, then concede what *did* change.",
+        '**Drill:** "Context windows are a million tokens now. Convince me RAG isn\'t dead." — give the four-part answer, then concede what *did* change.',
       answer:
         "Four parts, in order of interview weight: **cost** (every query re-processes whatever you stuff — at 500K tokens × thousands of queries/day, retrieval's 5-passage prompt wins by orders of magnitude, cache or no cache); **quality** (a model attending over 5 relevant passages beats one hunting through 500K tokens of mostly-irrelevant text — long-context recall degrades, especially mid-window); **access control and provenance** (retrieval-time filtering enforces per-user permissions and yields checkable citations; a stuffed window can do neither); **freshness at scale** (re-index one changed file vs. rebuild a giant cached prefix). Then the concession that marks seniority: long context *did* kill RAG's low end — a single manual, one contract, a day's logs now go straight into context, and hybrid designs (retrieve whole *documents* rather than snippets, let the model read generously) got better. The line to land: **RAG is how you decide what deserves the window; long context is how much fits once you've decided.** **Follow-up probe:** \"where's the crossover?\" → roughly when the corpus fits in-window *and* is queried rarely enough that re-processing beats maintaining a pipeline — a cost inequality you can sketch, not a dogma.",
     },

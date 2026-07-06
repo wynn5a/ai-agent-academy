@@ -93,6 +93,23 @@ def run_battery(agent):
       title: "Honesty is graded",
       text: "The injection battery and postmortem are worthless if sanitized. A report that says 'three of five attacks succeeded before mitigation, one still partially succeeds' demonstrates far more competence than 'all defended.' Interviewers and reviewers are calibrated to detect inflation — document reality.",
     },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "paragraph",
+      text: "This lab is the portfolio piece hiring guides describe almost verbatim: a production-shaped agent with monitoring, evals, a safety gate, and a documented failure. Hiring managers look at your GitHub before your résumé, and a couple of deep, evaluated projects beat any number of shallow demos — so package this one deliberately:",
+    },
+    {
+      type: "list",
+      items: [
+        "**README with a 60-second demo** — a short clip or GIF showing the agent running, a trace in the Langfuse UI, the approval CLI rejecting an action, and the suite exiting green. Assume the reader gives you one minute.",
+        "**The eval dashboard or report** — pass/fail counts, judge-human agreement, and the cost line from your regression runs; commit the raw report alongside a screenshot so it's inspectable, not just pretty.",
+        "**A documented failure + postmortem** — link the blameless postmortem prominently from the README. This is the artifact hiring guides specifically name, and the piece reviewers read first.",
+        "**An honest 'Limitations' section** — which injection attacks still succeed, what the suite doesn't cover, where the judge disagrees with humans. Stated limitations read as senior judgment; silence reads as unawareness.",
+      ],
+    },
   ],
   acceptanceCriteria: [
     "Langfuse tracing on Labs 02 and 05: every LLM and tool call traced with cost; one screenshot of a full trace included in the README",

@@ -90,6 +90,19 @@ if __name__ == "__main__":
       title: "Test the unhappy paths on purpose",
       text: "The acceptance criteria name three error scenarios — wrong ID, expired auth, rate limit — because they're what Gate G3's live attack will use. Each must return text that names the problem and the model's next move. And remember stdio's cardinal rule while debugging: stdout is the wire; log to stderr or your integration tests will fail with parse errors that look like SDK bugs.",
     },
+    {
+      type: "heading",
+      text: "Ship it to your portfolio",
+    },
+    {
+      type: "list",
+      items: [
+        "**README that demos in 60 seconds:** open with a short GIF or clip of a real client (Claude Desktop or Claude Code) driving your tools — hiring managers look at GitHub before the résumé, and a repo that shows itself working gets read; one that starts with install steps gets skimmed.",
+        "**Show the passing test suite:** paste the output of all three test layers (unit, protocol integration, sandbox) into the README. A green test run for an MCP server is exactly the evidence Gate G3 asks for, and it separates an evaluated project from a demo.",
+        "**An honest \"Limitations\" section:** what the server doesn't handle (rate-limit backoff strategy, pagination edge cases, which API surface you deliberately skipped) and what you'd do next. Stated limits read as engineering judgment, not weakness.",
+        "**Say how you sandboxed and authenticated it:** one short paragraph on the run_python isolation (which container flags, which test proves them) and one on the credential story (env vars, scope, what the stretch-goal HTTP+bearer setup would change). Sandboxed execution is a named skill in agent-engineer postings — make it findable.",
+      ],
+    },
   ],
   acceptanceCriteria: [
     "Python MCP server with ≥4 tools, ≥1 resource, ≥1 prompt; runs over stdio; connects to a real client (Claude Desktop or Claude Code)",

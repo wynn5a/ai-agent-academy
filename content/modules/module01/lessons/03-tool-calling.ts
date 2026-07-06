@@ -86,6 +86,59 @@ while True:
     messages.append({"role": "user", "content": results})`,
       explanation:
         "Three invariants trip everyone up: the assistant message containing `tool_use` must be resent **verbatim** (including any thinking blocks that arrived with it — on thinking-enabled models, reasoning and tool calls travel together), and every `tool_result` must reference a real `tool_use_id` from the immediately preceding assistant turn. Return a result for a tool that was never called (or drop one that was) and the API rejects the request with a 400 — the strict pairing is how the model keeps causality straight.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+from openai import OpenAI
+
+client = OpenAI()
+
+TOOLS = [{
+    "type": "function",              # flat — no nested "function" wrapper
+    "name": "get_weather",
+    "description": (
+        "Get current weather for a city. Use whenever the user asks about "
+        "weather, temperature, or outdoor conditions. Returns Celsius."
+    ),
+    "parameters": {                  # 'parameters', not 'input_schema'
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name, e.g. 'Tokyo'"},
+        },
+        "required": ["city"],
+    },
+}]
+
+def get_weather(city: str) -> str:
+    return json.dumps({"city": city, "temp_c": 21, "sky": "clear"})  # stub
+
+input_items = [{"role": "user", "content": "Should I bike to work in Tokyo today?"}]
+
+while True:
+    resp = client.responses.create(
+        model="gpt-5.5", input=input_items, tools=TOOLS,
+    )
+    calls = [item for item in resp.output if item.type == "function_call"]
+    if not calls:
+        print(resp.output_text)
+        break
+
+    for call in calls:
+        # 1) echo the call item back into the input list, verbatim
+        input_items.append(call)
+        # 2) run the tool, append the result with the matching call_id
+        args = json.loads(call.arguments)        # arrives as a STRING
+        input_items.append({
+            "type": "function_call_output",
+            "call_id": call.call_id,             # must match!
+            "output": get_weather(**args),
+        })`,
+          explanation:
+            "The tool schema key is `parameters` (vs Anthropic's `input_schema`), arguments arrive as a JSON string you must parse (vs an already-parsed dict), and results go back as `function_call_output` items appended to the input list rather than `tool_result` blocks inside a user message.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -124,6 +177,42 @@ for item in resp.output:
 # then call responses.create again with the grown input_list`,
       explanation:
         "OpenAI's current primary surface is the **Responses API** (the older Chat Completions API is still everywhere in production — know both). Same four-step dance, different plumbing: tool definitions are flat, arguments arrive as a JSON **string** you must parse, calls and results are items in a growing `input` list, and `call_id` pairing is just as strict as Anthropic's `tool_use_id`.",
+      provider: "openai",
+      variants: [
+        {
+          provider: "claude",
+          code: `messages = [{"role": "user", "content": "Should I bike to work in Tokyo today?"}]
+
+resp = client.messages.create(
+    model="claude-sonnet-5", max_tokens=1024,   # max_tokens is REQUIRED
+    tools=[{
+        "name": "get_weather",                  # no "type" wrapper at all
+        "description": "Get current weather for a city.",
+        "input_schema": {                       # 'input_schema', not 'parameters'
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    }],
+    messages=messages,
+)
+
+if resp.stop_reason == "tool_use":
+    messages.append({"role": "assistant", "content": resp.content})  # verbatim
+    results = []
+    for block in resp.content:
+        if block.type == "tool_use":
+            results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,        # must match!
+                "content": get_weather(**block.input),  # already a parsed dict
+            })
+    messages.append({"role": "user", "content": results})
+# then call messages.create again with the grown messages list`,
+          explanation:
+            "Anthropic's mirror image: the schema key is `input_schema`, `block.input` arrives already parsed, results return as `tool_result` blocks inside a **user** message (not standalone items), and `max_tokens` is required on every call.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -190,6 +279,48 @@ def run_turn(messages: list) -> str:
     raise RuntimeError("agent exceeded max iterations")`,
       explanation:
         "Notice the repeated-call handler still returns a `tool_result` for the block — dropping it would 400. Transient failures (network blips inside a tool) get retried **inside `execute_tool`**, not by re-calling the model: model calls are the expensive resource, tool executions are cheap. In production the iteration cap is joined by a token/dollar budget check (Lesson 5) — count both.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `MAX_ITERATIONS = 15
+
+def execute_tool(name: str, args: dict) -> tuple[str, bool]:
+    """Returns (content, is_error). Never raises into the loop."""
+    try:
+        return TOOL_IMPLS[name](**args), False
+    except KeyError:
+        return f"Unknown tool: {name}", True
+    except Exception as e:                     # tool bug or bad model args
+        return f"{type(e).__name__}: {e}", True
+
+def run_turn(input_items: list) -> str:
+    seen_calls = set()
+    for _ in range(MAX_ITERATIONS):
+        resp = client.responses.create(model="gpt-5.5",
+                                       input=input_items, tools=TOOLS)
+        calls = [i for i in resp.output if i.type == "function_call"]
+        if not calls:
+            return resp.output_text
+
+        for call in calls:
+            input_items.append(call)           # echo the call back
+            sig = (call.name, call.arguments)
+            if sig in seen_calls:              # loop detection
+                output = ("Error: repeated identical call — change approach "
+                          "or answer with what you have.")
+            else:
+                seen_calls.add(sig)
+                content, is_err = execute_tool(call.name,
+                                               json.loads(call.arguments))
+                output = f"Error: {content}" if is_err else content
+            input_items.append({"type": "function_call_output",
+                                "call_id": call.call_id, "output": output})
+    raise RuntimeError("agent exceeded max iterations")`,
+          explanation:
+            "`function_call_output` has no `is_error` flag (unlike Anthropic's `tool_result`) — signal failure inside the output string itself (e.g. an `Error:` prefix) so the model can still read it and adapt.",
+        },
+      ],
     },
     {
       type: "heading",
@@ -258,6 +389,12 @@ def run_turn(messages: list) -> str:
       text: "\"Whiteboard a tool-calling loop\" is the single most common agent-engineering exercise. The invariants they're checking: loop on `stop_reason`, resend the assistant turn verbatim, strict id pairing, all parallel results in one message, errors returned as `tool_result` content so the model can recover, and a max-iteration guard. If you can also say *why* each invariant exists, you're above the bar.",
     },
     {
+      type: "callout",
+      kind: "career",
+      title: "The most-requested hard skill",
+      text: "OpenAI/Anthropic function/tool calling and structured outputs appear **by name** among the most-requested skills in 2026 agent-engineering postings — part of the \"Agentic AI\" cluster that grew ~280% year over year. That's why this lesson teaches both providers' shapes side by side: the job market treats the loop above as table stakes, in either dialect.",
+    },
+    {
       type: "heading",
       text: "Whiteboard drills",
     },
@@ -265,9 +402,9 @@ def run_turn(messages: list) -> str:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Whiteboard a tool-calling loop.\" Narrate the invariants as you write — and anticipate the probes.",
+        '**Drill:** "Whiteboard a tool-calling loop." Narrate the invariants as you write — and anticipate the probes.',
       answer:
-        "Skeleton: loop → call API with `tools` + full history → if `stop_reason != \"tool_use\"`, return the text → else append the assistant turn **verbatim** → execute every `tool_use` block → append one user message containing all `tool_result`s with matching ids → repeat. Invariants to say *while writing*: (1) resend the assistant turn exactly, including thinking blocks; (2) strict id pairing — every request answered, nothing extra, or 400; (3) all parallel results in one message; (4) errors go back as `is_error: true` content, never exceptions; (5) max-iteration guard plus a token budget; (6) the model never executes anything — your code is the boundary. Probes to expect: \"why does the API 400 on a missing result?\" (causal record integrity — the model must see an answer for everything it asked), \"where do you retry a flaky tool?\" (inside the executor, not by re-calling the model), and \"what if two tools must run in order?\" (the model sequences them across turns; you never reorder within one).",
+        'Skeleton: loop → call API with `tools` + full history → if `stop_reason != "tool_use"`, return the text → else append the assistant turn **verbatim** → execute every `tool_use` block → append one user message containing all `tool_result`s with matching ids → repeat. Invariants to say *while writing*: (1) resend the assistant turn exactly, including thinking blocks; (2) strict id pairing — every request answered, nothing extra, or 400; (3) all parallel results in one message; (4) errors go back as `is_error: true` content, never exceptions; (5) max-iteration guard plus a token budget; (6) the model never executes anything — your code is the boundary. Probes to expect: "why does the API 400 on a missing result?" (causal record integrity — the model must see an answer for everything it asked), "where do you retry a flaky tool?" (inside the executor, not by re-calling the model), and "what if two tools must run in order?" (the model sequences them across turns; you never reorder within one).',
     },
     {
       type: "exercise",
@@ -275,7 +412,7 @@ def run_turn(messages: list) -> str:
       prompt:
         "**Drill:** A tool call fails with a transient network error. Walk through exactly where retry logic belongs and why.",
       answer:
-        "Three layers, and mixing them up is the failure mode: (1) **inside the tool executor** — retry the HTTP call to the downstream service with backoff; this is cheap and invisible to the model; (2) **as a `tool_result` with `is_error: true`** once executor retries are exhausted — the model decides whether to try differently or degrade gracefully; (3) **around the model API call itself** — backoff for 429/5xx (Lesson 5), completely separate from tool errors. What you never do: throw away the turn and re-call the model hoping for a different tool call (expensive, non-deterministic), or retry a side-effectful tool without an idempotency key (you might send the email twice). **Follow-up probe:** \"the tool is `charge_customer` — now what?\" → idempotency key derived from the `tool_use_id`, which is unique per request and stable across your executor retries.",
+        'Three layers, and mixing them up is the failure mode: (1) **inside the tool executor** — retry the HTTP call to the downstream service with backoff; this is cheap and invisible to the model; (2) **as a `tool_result` with `is_error: true`** once executor retries are exhausted — the model decides whether to try differently or degrade gracefully; (3) **around the model API call itself** — backoff for 429/5xx (Lesson 5), completely separate from tool errors. What you never do: throw away the turn and re-call the model hoping for a different tool call (expensive, non-deterministic), or retry a side-effectful tool without an idempotency key (you might send the email twice). **Follow-up probe:** "the tool is `charge_customer` — now what?" → idempotency key derived from the `tool_use_id`, which is unique per request and stable across your executor retries.',
     },
     {
       type: "exercise",

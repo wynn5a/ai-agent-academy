@@ -43,6 +43,40 @@ export const lesson05: Lesson = {
             "chunk_ids": chunk_ids}`,
       explanation:
         "Three load-bearing choices: an explicit refusal string (so \"can't answer\" is machine-detectable, not prose), parsing the citation markers back out, and **validating them against the passages that actually exist** — a model that cites [7] when you sent five passages just told you, for free, that it's fabricating; log `invalid_citations` as a first-class unfaithfulness signal. In the eval harness the same parse also checks whether the *right* sources got cited.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `def generate_grounded(query: str, chunk_ids: list[int]) -> dict:
+    context = "\\n\\n".join(
+        f"[{i + 1}] (source: {chunks[cid]['doc_id']} / {chunks[cid]['heading']})\\n"
+        f"{chunks[cid]['text']}"
+        for i, cid in enumerate(chunk_ids)
+    )
+    instructions = (
+        "You answer questions about a document corpus.\\n"
+        "Rules:\\n"
+        "1. Use ONLY the numbered context passages. No outside knowledge.\\n"
+        "2. Cite the passage number after every factual claim, like [2].\\n"
+        "3. If the passages do not contain the answer, reply exactly: "
+        "'The corpus does not contain enough information to answer this.'"
+    )
+    resp = llm.responses.create(
+        model="gpt-5.5",
+        instructions=instructions,
+        input=[{"role": "user",
+                "content": f"Context:\\n{context}\\n\\nQuestion: {query}"}],
+    )
+    answer = resp.output_text
+    cited = sorted({int(m) for m in re.findall(r"\\[(\\d+)\\]", answer)})
+    valid = [c for c in cited if 1 <= c <= len(chunk_ids)]
+    return {"answer": answer, "cited_passages": valid,
+            "invalid_citations": [c for c in cited if c not in valid],
+            "chunk_ids": chunk_ids}`,
+          explanation:
+            "The grounding rules go in `instructions` (OpenAI's name for the system prompt, vs. Anthropic's `system` param), `max_tokens` is optional here where the Messages API requires it, and the answer is simply `resp.output_text`. Everything that makes this snippet worth stealing — the exact refusal string, citation parsing, and out-of-range validation — is identical across providers.",
+        },
+      ],
     },
     {
       type: "paragraph",
@@ -111,6 +145,11 @@ for name, search in CONFIGS.items():
         "This loop — four configs, three metrics, one comparison table — *is* Lab 03's deliverable and the artifact a hiring panel wants to see. Diagnostic reading: high recall + low precision → rerank harder or retrieve fewer; low recall → fix chunking or add the missing retrieval mode; good retrieval numbers but wrong final answers → the problem is *generation*, so look at faithfulness next.",
     },
     {
+      type: "callout",
+      kind: "career",
+      text: 'A RAG pipeline **with a real evaluation harness** — retrieval precision/recall, faithfulness, answer relevance, not just "it works on my three test questions" — is one of the portfolio projects hiring managers most often cite as generating callbacks. RAGAS appears by name in job postings, and the metrics table this loop prints is precisely what separates your repo from the thousand tutorial RAG clones on GitHub: it proves you tune systems by measurement, which is the actual job.',
+    },
+    {
       type: "heading",
       text: "Generation metrics: faithfulness & answer relevance",
     },
@@ -158,7 +197,7 @@ for name, search in CONFIGS.items():
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your faithfulness metric comes from an LLM judge. Convince me I should believe it.\" — the validation story, end to end.",
+        '**Drill:** "Your faithfulness metric comes from an LLM judge. Convince me I should believe it." — the validation story, end to end.',
       answer:
         "Structure: calibrate, de-bias, monitor. **Calibrate**: hand-label 30–50 answers for faithfulness yourself (or with a teammate for inter-rater agreement — if two humans can't agree, no judge can be validated against you); run the judge on the same items; report agreement. Below ~85–90% agreement, iterate on the judge prompt — narrower rubric, claim-by-claim decomposition instead of holistic scores, explicit examples of supported vs unsupported — and re-calibrate. **De-bias by construction**: judge a *different model family* than the generator (self-preference), score claims individually rather than whole answers (verbosity bias), randomize or dual-order any pairwise comparisons (position bias), and pin the judge model version so scores are comparable across weeks. **Monitor**: keep a canary set of known-faithful and known-unfaithful answers in every eval run — if the judge's scores on the canaries drift, the judge changed, not your pipeline; and spot-check a random 5% of judge verdicts by hand each cycle. The one-liner that lands the point: **the judge is a model in production — it gets an eval too.** **Follow-up probe:** \"judge agreement is 92% — done?\" → check *which* 8% disagree: if they're all near-miss borderline claims, fine; if the judge systematically passes fabricated numbers or misses negations, the 92% is hiding a correlated blind spot your users will find.",
     },

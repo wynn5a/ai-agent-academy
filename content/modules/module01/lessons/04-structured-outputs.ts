@@ -61,6 +61,33 @@ resp = client.messages.create(
 data = json.loads(resp.content[0].text)   # guaranteed to match the schema`,
       explanation:
         "The SDKs also ship a convenience wrapper (`client.messages.parse()` with a Pydantic/Zod model) that validates for you. One catch: constrained decoding supports enums, `required`, and types — but **not** numeric `minimum`/`maximum` or string-length limits. Keep those in your schema for documentation, but enforce them client-side (next section).",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `TICKET_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {"type": "string",
+                     "enum": ["billing", "bug", "feature_request", "other"]},
+        "severity": {"type": "integer"},
+        "summary":  {"type": "string"},
+    },
+    "required": ["category", "severity", "summary"],
+    "additionalProperties": False,     # required for constrained decoding
+}
+
+resp = client.responses.create(
+    model="gpt-5.5",
+    input=[{"role": "user", "content": f"Classify this ticket: {ticket_text}"}],
+    text={"format": {"type": "json_schema", "name": "ticket",
+                     "schema": TICKET_SCHEMA, "strict": True}},
+)
+data = json.loads(resp.output_text)   # guaranteed to match the schema`,
+          explanation:
+            "OpenAI nests the schema under `text.format` with a required `name` and an explicit `strict: True` (vs Anthropic's `output_config.format`); the constrained-decoding guarantees and limits are the same.",
+        },
+      ],
     },
     {
       type: "code",
@@ -90,6 +117,38 @@ data = next(b for b in resp.content if b.type == "tool_use").input
 # data is a dict matching the schema — no parsing prose`,
       explanation:
         "`tool_choice` forces the call, so the 'tool' is really just an output mold. Before native structured outputs shipped, this *was* the standard Anthropic pattern — and it remains the portable one: it works on any tool-calling model, any provider, any API version. Conceptually it's also what structured outputs desugar to: constrained generation against a schema.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `# Define your desired OUTPUT as a tool schema, then force the model to "call" it.
+resp = client.responses.create(
+    model="gpt-5.5",
+    tools=[{
+        "type": "function",
+        "name": "record_ticket",
+        "description": "Record the classified support ticket.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string",
+                             "enum": ["billing", "bug", "feature_request", "other"]},
+                "severity": {"type": "integer", "minimum": 1, "maximum": 5},
+                "summary":  {"type": "string"},
+            },
+            "required": ["category", "severity", "summary"],
+        },
+    }],
+    tool_choice={"type": "function", "name": "record_ticket"},   # MUST call it
+    input=[{"role": "user", "content": f"Classify this ticket: {ticket_text}"}],
+)
+call = next(i for i in resp.output if i.type == "function_call")
+data = json.loads(call.arguments)
+# data is a dict matching the schema — no parsing prose`,
+          explanation:
+            'Same trick, OpenAI plumbing: `tool_choice={"type": "function", "name": ...}` forces the call, the schema key is `parameters`, and `arguments` arrives as a JSON string to parse (vs Anthropic\'s already-parsed `block.input`).',
+        },
+      ],
     },
     {
       type: "heading",
@@ -101,7 +160,7 @@ data = next(b for b in resp.content if b.type == "tool_use").input
     },
     {
       type: "paragraph",
-      text: "Understanding the mechanism makes the limits obvious. Structure, types, `enum`, `required`, string formats — all expressible as *which token can come next*, so all enforceable. But `\"minimum\": 1, \"maximum\": 5` on a number? When the model has emitted `1`, is that the value 1 (valid), or the start of 15 (invalid)? Value-level constraints aren't decidable token-by-token, so **numeric ranges, string lengths, and recursive schemas are not enforced** by constrained decoding. That is exactly why the validation layer below still exists, even with a 'guaranteed' schema.",
+      text: 'Understanding the mechanism makes the limits obvious. Structure, types, `enum`, `required`, string formats — all expressible as *which token can come next*, so all enforceable. But `"minimum": 1, "maximum": 5` on a number? When the model has emitted `1`, is that the value 1 (valid), or the start of 15 (invalid)? Value-level constraints aren\'t decidable token-by-token, so **numeric ranges, string lengths, and recursive schemas are not enforced** by constrained decoding. That is exactly why the validation layer below still exists, even with a \'guaranteed\' schema.',
     },
     {
       type: "callout",
@@ -184,9 +243,9 @@ def extract(text: str, max_retries: int = 2) -> Ticket:
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your extractor returns syntactically valid, schema-conforming JSON — but the `category` is wrong 15% of the time. Is structured output the fix?\"",
+        '**Drill:** "Your extractor returns syntactically valid, schema-conforming JSON — but the `category` is wrong 15% of the time. Is structured output the fix?"',
       answer:
-        "No — and recognizing that is the point of the question. Constrained decoding guarantees **structure, not semantics**: it fences *which tokens can be emitted*, not *whether the answer is right*. A 15% misclassification rate is an accuracy problem, attacked with: better prompts (clear category definitions with boundary examples), few-shot examples of the confusable cases, tightening the enum (are two categories genuinely ambiguous? — merge or add a tiebreaker field), asking the model for a confidence field and routing low-confidence items to a stronger model or a human, and above all **an eval set** so you can measure whether any change helps. Reaching for more schema when the problem is semantics is a junior tell; naming the structure-vs-correctness distinction unprompted is a senior one. **Follow-up probe:** \"how do you build that eval set?\" → label a few hundred real tickets, stratified by category — Module 5 territory.",
+        'No — and recognizing that is the point of the question. Constrained decoding guarantees **structure, not semantics**: it fences *which tokens can be emitted*, not *whether the answer is right*. A 15% misclassification rate is an accuracy problem, attacked with: better prompts (clear category definitions with boundary examples), few-shot examples of the confusable cases, tightening the enum (are two categories genuinely ambiguous? — merge or add a tiebreaker field), asking the model for a confidence field and routing low-confidence items to a stronger model or a human, and above all **an eval set** so you can measure whether any change helps. Reaching for more schema when the problem is semantics is a junior tell; naming the structure-vs-correctness distinction unprompted is a senior one. **Follow-up probe:** "how do you build that eval set?" → label a few hundred real tickets, stratified by category — Module 5 territory.',
     },
     {
       type: "exercise",

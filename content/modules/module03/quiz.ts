@@ -157,7 +157,7 @@ export const quiz03: QuizQuestion[] = [
   },
   {
     question:
-      "\"Context windows are a million tokens — why not paste the whole corpus into every prompt instead of building RAG?\" Which answer covers the senior objections?",
+      '"Context windows are a million tokens — why not paste the whole corpus into every prompt instead of building RAG?" Which answer covers the senior objections?',
     options: [
       "There is no reason; long context has made RAG obsolete",
       "Cost (re-processing the corpus per query, and any corpus edit invalidates the cached prefix), degraded attention over huge mostly-irrelevant contexts, no per-user access control or citations, and corpora that outgrow any window — though a single small document that fits is legitimately better served without a pipeline",

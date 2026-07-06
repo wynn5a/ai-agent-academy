@@ -155,6 +155,11 @@ print(summarize([
       text: "You do not need a giant benchmark to begin. Twenty well-chosen cases — a few happy paths, a few known-hard inputs, every bug you've ever fixed — catch most regressions. A small suite that runs on every change beats a huge one that runs never. Grow it by accretion: every production failure becomes a new case.",
     },
     {
+      type: "callout",
+      kind: "career",
+      text: "Agent-engineering postings keep converging on one recurring responsibility: **build evaluation harnesses and feedback loops that quantify agent value in a data-driven way** — this module in a sentence. Observability and eval stacks (Langfuse, Phoenix, LangSmith) now appear by name as required skills, but the tool names are a proxy: what interviewers actually probe is whether you can design this pyramid — assertions in CI, a validated judge, sampled human review — and walk them through an eval report you produced yourself.",
+    },
+    {
       type: "heading",
       text: "Eval economics: matching cost to cadence",
     },
@@ -164,7 +169,12 @@ print(summarize([
     },
     {
       type: "table",
-      headers: ["Tier", "Rough unit cost", "Sane cadence", "What you'd miss running it less often"],
+      headers: [
+        "Tier",
+        "Rough unit cost",
+        "Sane cadence",
+        "What you'd miss running it less often",
+      ],
       rows: [
         [
           "Deterministic assertions",
@@ -210,7 +220,7 @@ print(summarize([
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Design the eval pyramid for a coding agent that opens pull requests. What goes in each tier, and how often does each run?\"",
+        '**Drill:** "Design the eval pyramid for a coding agent that opens pull requests. What goes in each tier, and how often does each run?"',
       answer:
         "Name concrete checks per tier, then state cadence. **Deterministic** (every commit): does the diff compile/lint, do existing tests still pass, is the diff within a size budget, did it touch only files in scope, no forbidden paths (CI config, secrets) written without a separate gate. **Judge tier** (every PR the agent opens): is the PR description accurate to the actual diff, is the change minimally scoped rather than drive-by refactoring, does it follow the repo's style conventions — each a narrow, rubric-anchored question, not a holistic 'is this a good PR?' score. **Human tier**: sampled senior-engineer review of a percentage of merged agent PRs weekly, plus a periodic full audit checking judge-human agreement hasn't drifted. Then split the *kind* of question, not just the tier: a **capability** benchmark (a fixed set of held-out issues, tracked over prompt/model versions) answers 'is the agent getting better at real tasks,' while the **regression** suite (every bug ever caused by an agent PR, replayed) answers 'did this change reintroduce a known-bad pattern' — report both deltas separately when deciding whether to ship a prompt change. **Follow-up probe:** \"the capability benchmark score is flat for two months — is that fine?\" → not necessarily: check whether it's a true plateau or a ceiling effect (the benchmark saturated and can't discriminate improvements anymore) versus real stagnation — a flat capability score with a growing regression suite that keeps catching new failures suggests the team is treading water, not standing still.",
     },
@@ -218,7 +228,7 @@ print(summarize([
       type: "exercise",
       kind: "concept",
       prompt:
-        "**Drill:** \"Your regression suite score has been flat for three months, but a teammate says quality feels worse. What's your hypothesis, and how do you check it?\"",
+        '**Drill:** "Your regression suite score has been flat for three months, but a teammate says quality feels worse. What\'s your hypothesis, and how do you check it?"',
       answer:
         "Hypothesis: the suite has gone stale relative to the live traffic distribution. A flat regression score only proves nothing regressed **on those specific 20–50 cases** — it says nothing about failure modes the suite never learned about, because it's built entirely from yesterday's postmortems. 'Quality feels worse' is exactly the signal a purely-regression-focused eval program is blind to. To check it: pull a fresh sample of recent production traces (not filtered by whether they triggered a complaint), score them against the current rubric, and compare to historical performance on similarly-sampled traffic; cross-reference against any user-feedback signal (thumbs-down rate, ticket volume) for a directional read; and look at whether the mix of tasks users are attempting has shifted — a suite frozen from six months ago encodes a traffic distribution that may no longer exist. The fix is procedural: keep growing the suite by accretion as the lesson describes, but also periodically **refresh** it with a fresh production sample regardless of whether anything broke, and maintain a separate capability benchmark that isn't defined by past failures at all, since a regression-only program can't detect decline in dimensions no past failure ever exercised. **Follow-up probe:** \"the capability benchmark also hasn't moved\" → check for a ceiling effect (ask whether any technique could plausibly move this benchmark further) versus genuine stagnation; if the benchmark itself no longer discriminates between good and mediocre runs, it's time to retire or expand it, the same way a saturated technical interview question stops being useful once everyone's seen it.",
     },

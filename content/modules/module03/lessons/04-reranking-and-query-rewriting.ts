@@ -139,6 +139,53 @@ def decompose(query: str) -> list[str]:
 probe_vec = encoder.encode(hyde_probe("why do ingestion jobs stall on large PDFs?"))`,
       explanation:
         "Both techniques reuse Module 1 machinery — HyDE is a plain completion, decomposition is the forced-tool-call structured-output trick. For multi-hop queries: decompose, run `retrieve_pipeline` per sub-question, deduplicate the union of chunks, then generate one answer over all of them.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+from openai import OpenAI
+
+llm = OpenAI()
+
+def hyde_probe(query: str) -> str:
+    """Generate a hypothetical answer passage; embed IT instead of the query."""
+    resp = llm.responses.create(
+        model="gpt-5.5",
+        input=[{"role": "user", "content":
+            "Write one short documentation-style paragraph that would plausibly "
+            f"answer this question: {query}\\n"
+            "It will be used only as a search probe, so generic phrasing is fine."}],
+    )
+    return resp.output_text
+
+SUB_QUESTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "questions": {"type": "array", "items": {"type": "string"},
+                      "minItems": 1, "maxItems": 4},
+    },
+    "required": ["questions"],
+    "additionalProperties": False,
+}
+
+def decompose(query: str) -> list[str]:
+    """Constrain the output to a JSON schema of standalone sub-questions."""
+    resp = llm.responses.create(
+        model="gpt-5.5",
+        input=[{"role": "user", "content":
+            f"Break this into independently searchable sub-questions: {query}"}],
+        text={"format": {"type": "json_schema", "name": "sub_questions",
+                         "schema": SUB_QUESTIONS_SCHEMA, "strict": True}},
+    )
+    return json.loads(resp.output_text)["questions"]
+
+# usage: search with the hypothetical answer, not the raw question
+probe_vec = encoder.encode(hyde_probe("why do ingestion jobs stall on large PDFs?"))`,
+          explanation:
+            "HyDE is the same plain completion, read off `resp.output_text`. For decomposition, OpenAI's native structured outputs (`text.format` with `strict: True` — note the required `additionalProperties: False`) replace Anthropic's forced-tool-call trick: the schema is enforced server-side and you `json.loads` the text, instead of fishing a `tool_use` block out of the response.",
+        },
+      ],
     },
     {
       type: "callout",

@@ -59,6 +59,20 @@ for block in resp.content:
         print(block.text)`,
       explanation:
         "Responses can now contain **thinking blocks** alongside text. Two rules: thinking is billed as output tokens whether or not you display it, and in multi-turn conversations you resend thinking blocks **verbatim** like any other assistant content — the same own-the-array discipline from Lesson 1. Effort is the cost/quality lever: low for routine extraction, high for hard reasoning.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `resp = client.responses.create(
+    model="gpt-5.5",
+    reasoning={"effort": "medium"},   # low | medium | high | xhigh
+    input=[{"role": "user", "content": "Plan the refactor step by step."}],
+)
+print(resp.output_text)   # reasoning happens internally; you get the answer`,
+          explanation:
+            "OpenAI's reasoning models likewise reject `temperature`; depth is a single top-level `reasoning={\"effort\": ...}` parameter rather than Anthropic's `thinking` + `output_config` pair, and the reasoning itself stays internal instead of arriving as content blocks.",
+        },
+      ],
     },
     {
       type: "exercise",
@@ -201,7 +215,7 @@ data: {"type":"message_stop"}`,
     },
     {
       type: "paragraph",
-      text: "When a streamed response contains a tool call, the arguments arrive as **fragments of a JSON string** (`input_json_delta`), not as parseable objects. A fragment might be `{\"ci` — parsing it throws. The rule: accumulate fragments per block index until `content_block_stop`, then parse once. This is a classic live-coding trap.",
+      text: 'When a streamed response contains a tool call, the arguments arrive as **fragments of a JSON string** (`input_json_delta`), not as parseable objects. A fragment might be `{"ci` — parsing it throws. The rule: accumulate fragments per block index until `content_block_stop`, then parse once. This is a classic live-coding trap.',
     },
     {
       type: "code",
@@ -230,6 +244,27 @@ with client.messages.stream(model="claude-sonnet-5", max_tokens=1024,
 final = stream.get_final_message()   # or just use this — the SDK accumulated it`,
       explanation:
         "In practice you let the SDK do this (`get_final_message()` returns fully-formed `tool_use` blocks), but you must be able to explain the manual version: fragments keyed by block index, parse only at `content_block_stop`, and multiple tool calls can interleave as separate indices in one response.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import json
+
+buffers = {}   # item id -> accumulated argument fragments
+
+stream = client.responses.create(model="gpt-5.5", input=input_items,
+                                 tools=TOOLS, stream=True)
+for event in stream:
+    if event.type == "response.output_text.delta":
+        print(event.delta, end="", flush=True)
+    elif event.type == "response.function_call_arguments.delta":
+        buffers[event.item_id] = buffers.get(event.item_id, "") + event.delta
+    elif event.type == "response.function_call_arguments.done":
+        args = json.loads(event.arguments)   # NOW it's parseable`,
+          explanation:
+            "Same trap, different event names: function-call arguments stream as string fragments in `response.function_call_arguments.delta` events keyed by item id — accumulate and parse only when the `.done` event (or the final response's completed item) arrives.",
+        },
+      ],
     },
     {
       type: "callout",
@@ -255,7 +290,7 @@ final = stream.get_final_message()   # or just use this — the SDK accumulated 
       prompt:
         "**Drill:** Your agent's p50 total latency is 6s and users complain it feels slow. What metric do you actually optimize, and with what levers?",
       answer:
-        "**Time-to-first-token (TTFT)**, not total latency — perceived speed is about when something starts appearing. Levers in order: (1) stream and render deltas immediately (flush, no buffering); (2) prompt caching — a cache hit skips prefill on the huge stable prefix, and prefill dominates TTFT for long prompts; (3) shrink the prompt (trim history, defer tool schemas); (4) a faster model tier for the first visible response; (5) UX tricks — show thinking-in-progress indicators when the model reasons before answering. Total latency still matters for pipeline stages nobody watches; TTFT matters where a human is staring at the screen. **Follow-up probe:** \"streaming is on but TTFT is still 4s — why?\" → long uncached prefill (check `cache_read_input_tokens`), or the model is thinking before emitting text.",
+        '**Time-to-first-token (TTFT)**, not total latency — perceived speed is about when something starts appearing. Levers in order: (1) stream and render deltas immediately (flush, no buffering); (2) prompt caching — a cache hit skips prefill on the huge stable prefix, and prefill dominates TTFT for long prompts; (3) shrink the prompt (trim history, defer tool schemas); (4) a faster model tier for the first visible response; (5) UX tricks — show thinking-in-progress indicators when the model reasons before answering. Total latency still matters for pipeline stages nobody watches; TTFT matters where a human is staring at the screen. **Follow-up probe:** "streaming is on but TTFT is still 4s — why?" → long uncached prefill (check `cache_read_input_tokens`), or the model is thinking before emitting text.',
     },
     {
       type: "exercise",
