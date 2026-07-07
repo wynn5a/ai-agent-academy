@@ -43,9 +43,17 @@ def load_cases():
     for path in sorted(pathlib.Path("cases").glob("*.json")):
         yield json.loads(path.read_text())
 
+# $/1M tokens at list — keep rates in one constant you can update
+PRICE = {"input": 3.00, "output": 15.00}          # claude-sonnet-5 list price
+
+def usd(usage) -> float:
+    # No SDK returns dollars — you always compute them from token counts.
+    return (usage.input_tokens * PRICE["input"]
+            + usage.output_tokens * PRICE["output"]) / 1e6
+
 def score_case(case) -> tuple[bool, float]:
     result = run_agent(case["prompt"])
-    cost = result.usage.dollars      # tracked per run (next lesson)
+    cost = usd(result.usage)         # Lesson 4 automates this via Langfuse
 
     if case["check"] == "assert":
         called = {c.name for c in result.tool_calls}

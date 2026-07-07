@@ -3,8 +3,14 @@ import type { Lab } from "@/lib/types";
 export const lab01: Lab = {
   title: "Tool-Calling CLI Assistant",
   objective:
-    "Build a CLI assistant from scratch — raw SDK only, no frameworks — that answers questions using three tools: calculator, get_current_time, and read_file. This is the atom every later lab is built from. Starter code lives in labs/lab01-agent-loop/.",
+    "Build a CLI assistant from scratch — raw SDK only, no frameworks — that answers questions using three tools: calculator, get_current_time, and read_file. This is the atom every later lab is built from. You start from an empty directory; the skeleton below is the map.",
   sections: [
+    {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "You need the environment from the [Setup lesson](/modules/llm-api-mastery/lessons/setup): Python 3.11+ in a virtualenv, `pip install anthropic` (or `openai`), and your API key exported. Add `pip install pytest` for the test criterion. No other dependencies. Budget roughly an afternoon for the core criteria.",
+    },
     {
       type: "heading",
       text: "What you're building",
@@ -28,8 +34,9 @@ export const lab01: Lab = {
       title: "skeleton (fill in the TODOs)",
       code: `# tools.py — implementations + schemas
 def calculator(expression: str) -> str:
-    # SAFELY evaluate arithmetic. No eval() on raw input —
-    # use ast.literal_eval-style parsing or a tiny recursive parser.
+    # SAFELY evaluate arithmetic. No eval() on raw input — and note that
+    # ast.literal_eval can't do math (literals only): walk an ast.parse()
+    # tree allowing only number/operator nodes, or write a tiny parser.
     ...
 
 def get_current_time(timezone: str = "UTC") -> str: ...
@@ -63,7 +70,7 @@ def run_turn(messages, budget):
       type: "list",
       items: [
         "**README with a 60-second demo**: a GIF or asciinema recording of the multi-step question (`read_file` → `calculator` → answer) plus copy-paste run instructions. Reviewers rarely clone the repo — the demo IS the first impression.",
-        "**Reported numbers**: test pass count from `test_agent.py`, tokens + estimated cost for a typical session, and observed retry behavior under a simulated 429. Real measured numbers signal you ran and verified it, not just wrote it.",
+        "**Reported numbers**: pass count from the `test_agent.py` suite you wrote, tokens + estimated cost for a typical session, and observed retry behavior under a simulated 429. Real measured numbers signal you ran and verified it, not just wrote it.",
         '**An honest "Limitations" section**: e.g. what expressions the calculator can\'t parse, the single-directory file sandbox, no conversation persistence across runs. Stated limitations read as engineering judgment, not weakness — and their absence is what reviewers notice.',
         "**A trace or screenshot of it working**: one full multi-tool transcript (assistant tool call → tool result → final answer, with the token/cost report) so a reviewer can verify the loop without running anything.",
       ],
@@ -75,7 +82,7 @@ def run_turn(messages, budget):
     "Tool errors (file not found, division by zero) are returned to the model, which recovers gracefully — the loop never crashes",
     "Prints total tokens + estimated cost per session (rates pulled into one constant you can update)",
     "Retries API errors with exponential backoff + jitter (max 3 attempts), never retries 400s",
-    "test_agent.py passes",
+    "A pytest suite you write yourself (`test_agent.py`) passes — cover at least the happy path, recovery from a tool error, and one multi-step question",
   ],
   stretchGoals: [
     "Stream the final answer token-by-token while still handling tool-use turns",

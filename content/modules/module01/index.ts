@@ -1,4 +1,5 @@
 import type { Module } from "@/lib/types";
+import { lesson00 } from "./lessons/00-setup";
 import { lesson01 } from "./lessons/01-messages-are-the-only-state";
 import { lesson02 } from "./lessons/02-sampling-and-streaming";
 import { lesson03 } from "./lessons/03-tool-calling";
@@ -28,7 +29,15 @@ export const module01: Module = {
     "Enable adaptive thinking, tune effort, and explain why frontier models replaced sampling parameters",
     "Send images and PDFs as content blocks and combine document input with structured outputs for extraction",
   ],
-  lessons: [lesson01, lesson02, lesson03, lesson04, lesson05, lesson06],
+  lessons: [
+    lesson00,
+    lesson01,
+    lesson02,
+    lesson03,
+    lesson04,
+    lesson05,
+    lesson06,
+  ],
   quiz: quiz01,
   lab: lab01,
   resources: resources01,

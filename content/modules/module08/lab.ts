@@ -7,6 +7,12 @@ export const lab08: Lab = {
     "Build the portfolio anchor: an agent that takes a GitHub issue, explores the repo, implements a fix in a sandbox, writes a reproducing test and iterates to green with bounded retries, and opens a draft PR gated on human approval. Ship it with full tracing, a per-issue cost report, an evaluation across ≥10 issues with a partial-success taxonomy, and a frank limitations doc. Then turn it into Gate G4 interview material.",
   sections: [
     {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "Everything from earlier labs carries over (SDKs, Langfuse env from Lab 07). New pieces: a GitHub personal access token plus `pip install PyGithub` (or the `gh` CLI) for issue loading and draft PRs; git 2.5+ for worktree sandboxes (Docker only if you choose container isolation instead); and a target repo — a small Python project with a pytest suite that you control. This is the six-week capstone: the skeleton's TODOs (sandbox manager, issue loader, cost extraction) are real engineering, not an afternoon of glue.",
+    },
+    {
       type: "heading",
       text: "What you're building",
     },

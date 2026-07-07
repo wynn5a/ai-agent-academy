@@ -7,6 +7,12 @@ export const lab03: Lab = {
     "Build a full RAG pipeline over a real corpus of 100+ documents — structural chunking, hybrid retrieval (BM25 + dense with RRF), cross-encoder reranking, grounded generation with citations — plus a labeled eval set and a committed metrics report comparing every retrieval configuration. This is a portfolio piece: a hiring manager should grasp the architecture and your results in three minutes.",
   sections: [
     {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "New dependencies beyond the Module 1 setup: `pip install sentence-transformers qdrant-client rank-bm25 pypdf` (add `ragas` if you use it for faithfulness instead of your own judge). Two heads-ups: `sentence-transformers` pulls in PyTorch and downloads model weights from Hugging Face on first run — hundreds of MB, so run the first embed before you need it; and `qdrant-client` runs in local mode (`QdrantClient(path=\"./qdrant_data\")`) with no server or Docker required. `pypdf` covers the PDF-ingestion criterion. This is a multi-day lab — plan for it.",
+    },
+    {
       type: "heading",
       text: "What you're building",
     },

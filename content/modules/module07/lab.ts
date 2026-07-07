@@ -6,6 +6,12 @@ export const lab07: Lab = {
     "Go back to Labs 02–05 and make them production-legible. Add Langfuse tracing with per-call cost, build a regression eval suite for your Lab 02 agent that mixes deterministic assertions and a validated judge, run an injection battery, gate any destructive tool behind an HITL approval flow, and write one honest failure postmortem. This is the module that turns 'it demos' into 'it's trustworthy.'",
   sections: [
     {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "You're retrofitting Labs 02 and 05, so both must be working. New setup: create a free [Langfuse](https://langfuse.com) account, make a project, and export `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_HOST`; then `pip install langfuse pytest`. Fair warning on effort: hand-labeling 30+ examples for judge validation is real work, and the five retrofits together are a multi-day lab, not an evening.",
+    },
+    {
       type: "heading",
       text: "What you're building",
     },
@@ -34,11 +40,12 @@ export const lab07: Lab = {
         "skeleton — regression runner + injection battery (fill the TODOs)",
       code: `# evals/run_suite.py
 from my_agent import run_agent
+from my_costs import usd            # Lesson 3's usage→dollars helper
 from my_judge import run_judge, FAITHFULNESS_RUBRIC
 
 def score(case) -> tuple[bool, float]:
     result = run_agent(case["prompt"])
-    cost = result.usage.dollars
+    cost = usd(result.usage)        # no SDK returns dollars — you compute them
     if case["check"] == "assert":
         called = {c.name for c in result.tool_calls}
         # TODO: enforce must_call / must_not_call from the case

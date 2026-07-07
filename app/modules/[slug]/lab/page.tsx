@@ -5,6 +5,7 @@ import { getModule, modules } from "@/content/registry";
 import SectionRenderer from "@/components/SectionRenderer";
 import LabActions from "@/components/LabActions";
 import LabChecklist from "@/components/LabChecklist";
+import LabNotes from "@/components/LabNotes";
 import ReadingProgress from "@/components/ReadingProgress";
 
 export function generateStaticParams() {
@@ -30,6 +31,7 @@ export default async function LabPage({
   const mod = getModule(slug);
   if (!mod) notFound();
   const lab = mod.lab;
+  const nextModule = modules.find((m) => m.id === mod.id + 1);
 
   return (
     <div>
@@ -81,6 +83,23 @@ export default async function LabPage({
         moduleSlug={mod.slug}
         criteriaCount={lab.acceptanceCriteria.length}
       />
+
+      <LabNotes moduleSlug={mod.slug} />
+
+      <div className="border-border mt-8 flex justify-end border-t pt-6 text-sm">
+        {nextModule ? (
+          <Link
+            href={`/modules/${nextModule.slug}`}
+            className="text-slate-400 hover:text-sky-400"
+          >
+            Next: Module {nextModule.id} — {nextModule.title} →
+          </Link>
+        ) : (
+          <Link href="/" className="text-slate-400 hover:text-sky-400">
+            Course complete — back to the dashboard →
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

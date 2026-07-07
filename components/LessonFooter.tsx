@@ -19,7 +19,7 @@ export default function LessonFooter({
   nextHref: string;
   nextTitle: string;
 }) {
-  const { completedLessons, toggleLesson } = useProgress();
+  const { completedLessons, toggleLesson, completeLesson } = useProgress();
   const done = !!completedLessons[`${moduleSlug}/${lessonSlug}`];
 
   return (
@@ -45,11 +45,16 @@ export default function LessonFooter({
         )}
         <Link
           href={nextHref}
+          onClick={() => completeLesson(moduleSlug, lessonSlug)}
+          title="Continuing also marks this lesson complete"
           className="text-right text-slate-400 hover:text-sky-400"
         >
           {nextTitle} →
         </Link>
       </div>
+      <p className="mt-2 text-right text-xs text-slate-600">
+        Continuing marks this lesson complete.
+      </p>
     </footer>
   );
 }

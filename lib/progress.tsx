@@ -16,6 +16,8 @@ export interface ProgressState {
   labsDone: Record<string, boolean>; // key: moduleSlug
   // key: moduleSlug, value: checked state per acceptance-criterion index
   labChecks: Record<string, Record<number, boolean>>;
+  // key: moduleSlug, value: free-form notes (repo URL, reflections)
+  labNotes: Record<string, string>;
 }
 
 const EMPTY: ProgressState = {
@@ -23,15 +25,18 @@ const EMPTY: ProgressState = {
   quizScores: {},
   labsDone: {},
   labChecks: {},
+  labNotes: {},
 };
 const STORAGE_KEY = "aea-progress-v1";
 
 interface ProgressApi extends ProgressState {
   ready: boolean;
   toggleLesson: (moduleSlug: string, lessonSlug: string) => void;
+  completeLesson: (moduleSlug: string, lessonSlug: string) => void;
   recordQuiz: (moduleSlug: string, score: number) => void;
   toggleLab: (moduleSlug: string) => void;
   toggleLabCheck: (moduleSlug: string, index: number) => void;
+  setLabNote: (moduleSlug: string, note: string) => void;
   resetAll: () => void;
   moduleStats: (moduleSlug: string) => {
     lessonsDone: number;
@@ -87,6 +92,20 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     [state, persist],
   );
 
+  // Idempotent "set done" — used when navigation implies completion, so it
+  // never un-completes a lesson the way toggleLesson would.
+  const completeLesson = useCallback(
+    (m: string, l: string) => {
+      const key = `${m}/${l}`;
+      if (state.completedLessons[key]) return;
+      persist({
+        ...state,
+        completedLessons: { ...state.completedLessons, [key]: true },
+      });
+    },
+    [state, persist],
+  );
+
   const recordQuiz = useCallback(
     (m: string, score: number) => {
       const best = Math.max(state.quizScores[m] ?? 0, score);
@@ -115,6 +134,13 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
           [m]: { ...current, [index]: !current[index] },
         },
       });
+    },
+    [state, persist],
+  );
+
+  const setLabNote = useCallback(
+    (m: string, note: string) => {
+      persist({ ...state, labNotes: { ...state.labNotes, [m]: note } });
     },
     [state, persist],
   );
@@ -169,9 +195,11 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         ...state,
         ready,
         toggleLesson,
+        completeLesson,
         recordQuiz,
         toggleLab,
         toggleLabCheck,
+        setLabNote,
         resetAll,
         moduleStats,
         gatePassed,

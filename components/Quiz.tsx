@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import clsx from "clsx";
 import type { QuizQuestion } from "@/lib/types";
 import { PASS_THRESHOLD } from "@/lib/types";
@@ -69,6 +70,14 @@ export default function Quiz({
           {best >= PASS_THRESHOLD
             ? "— passed ✓"
             : `— need ${Math.round(PASS_THRESHOLD * 100)}% to pass`}
+          {best >= PASS_THRESHOLD && (
+            <Link
+              href={`/modules/${moduleSlug}/lab`}
+              className="ml-2 font-medium text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
+            >
+              Next: the lab →
+            </Link>
+          )}
         </div>
       )}
 
@@ -105,12 +114,22 @@ export default function Quiz({
               ))}
             </div>
           )}
-          <button
-            onClick={retry}
-            className="mt-3 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/15"
-          >
-            Retry quiz
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={retry}
+              className="rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/15"
+            >
+              Retry quiz
+            </button>
+            {score >= PASS_THRESHOLD && (
+              <Link
+                href={`/modules/${moduleSlug}/lab`}
+                className="rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-bold text-emerald-300 hover:bg-emerald-500/30"
+              >
+                Next: the lab →
+              </Link>
+            )}
+          </div>
         </div>
       )}
 

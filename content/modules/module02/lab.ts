@@ -4,8 +4,14 @@ export const lab02: Lab = {
   title: "Lab 02 — File-System Research Agent",
   portfolio: true,
   objective:
-    "Build an agent that answers natural-language questions about any local codebase or folder: it plans, lists, greps, and reads files across the repo, then synthesizes an answer with file-path citations — under hard iteration, cost, and time budgets, with a full JSONL trace and graceful degradation. Raw SDK only; starter code lives in labs/lab02-research-agent/.",
+    "Build an agent that answers natural-language questions about any local codebase or folder: it plans, lists, greps, and reads files across the repo, then synthesizes an answer with file-path citations — under hard iteration, cost, and time budgets, with a full JSONL trace and graceful degradation. Raw SDK only; you build it from scratch in a fresh directory.",
   sections: [
+    {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "Same environment as Lab 01: Python 3.11+, `anthropic` (or `openai`) installed, API key exported — see the [Setup lesson](/modules/llm-api-mastery/lessons/setup) if you skipped it. `jq` is handy for inspecting `trace.jsonl` but optional. Budget a day: the loop is small, but exercising every unhappy path takes real time.",
+    },
     {
       type: "heading",
       text: "What you're building",

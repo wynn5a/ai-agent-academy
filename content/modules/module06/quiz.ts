@@ -5,10 +5,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "In the MCP architecture, where do API credentials live, and why there?",
     options: [
-      "In the model's system prompt, so it can authenticate itself per call",
-      "In the host application's UI settings, injected into the model's context at startup",
+      "In the model's system prompt, supplied once at session start, so the model can present the credential itself on every tools/call without the server having to track per-session auth state",
+      "In the host application, which injects them into the model's context at startup — the host owns the user relationship, so it's the natural place for the user to enter secrets and for the model to pick them up",
       "In the server process (env vars / secrets manager) — the model only ever sees tool names and schemas, so a secret that never enters model context can't leak through injection or model error",
-      "Split between client and server so neither holds a complete key",
+      "Split between the client and the server during the initialize handshake, so neither side ever holds a complete key and compromising one process alone yields nothing",
     ],
     correct: 2,
     explanation:
@@ -18,9 +18,9 @@ export const quiz06: QuizQuestion[] = [
     question: "Tools, resources, and prompts — who invokes each?",
     options: [
       "Tools: the model, mid-task; resources: the application/host, which attaches them to context; prompts: the user, explicitly (slash-command style templates)",
-      "All three are invoked by the model whenever it chooses",
-      "Tools: the user; resources: the model; prompts: the host",
-      "The server invokes all three and pushes results to the client",
+      "All three are invoked by the model whenever it chooses — discovery exists precisely so that everything a server publishes becomes model-callable, with the host merely relaying the calls",
+      "Tools: the user, who approves each action before it runs; resources: the model, which reads whatever data it decides it needs; prompts: the host, which injects templates automatically at session start",
+      "The server invokes all three on its own schedule and pushes results to the client as notifications, since it's the side that owns the capabilities",
     ],
     correct: 0,
     explanation:
@@ -29,10 +29,10 @@ export const quiz06: QuizQuestion[] = [
   {
     question: "How does an MCP session begin?",
     options: [
-      "The client immediately sends tools/call; discovery is optional",
+      "The client immediately sends tools/call for the tool it wants; discovery via tools/list is an optional optimization, and version differences surface later as per-request errors",
       "The client sends an initialize request declaring protocol version and capabilities; the server responds with its own; the client sends an initialized notification — then normal traffic like tools/list can flow",
-      "The server dials the client and streams its tool list unprompted",
-      "Both sides exchange TLS certificates, which doubles as capability negotiation",
+      "The server dials the client and streams its full tool list unprompted, so schemas are in context before the first request; the client replies with the subset of capabilities it will keep",
+      "Both sides exchange TLS certificates, which doubles as capability negotiation — supported features are encoded as certificate extensions, securing transport and protocol in one step",
     ],
     correct: 1,
     explanation:
@@ -42,22 +42,22 @@ export const quiz06: QuizQuestion[] = [
     question:
       "Your API has 12 REST endpoints. The straightforward MCP server mirrors each as a tool. Why is this usually wrong, and what's better?",
     options: [
-      "It's correct — fidelity to the API is the goal of an MCP server",
-      "Wrong only because 12 exceeds a protocol limit on tool count",
-      "It's wrong because tools can't call more than one endpoint internally",
+      "It's correct — fidelity to the API is the goal: a one-to-one mirror stays trivially in sync with the upstream endpoints, gives the model maximum freedom to compose calls the way a programmer would, and keeps product assumptions out of the tool layer, which is what makes a server reusable across hosts",
+      "Wrong only because twelve exceeds the recommended per-server tool budget; below that cap, one tool per endpoint is the intended design, since clients rely on a stable one-to-one mapping between schemas and endpoints",
+      "It's wrong because a tool may only call one downstream endpoint internally — the protocol has no way to represent a multi-endpoint result — so cross-endpoint workflows have to be left to the model to chain",
       "Models choose worse as tool count grows, and thin wrappers force the model to chain calls and join data in-context, burning tokens and multiplying failure points; better: fewer task-level tools that accept what the model has (names, queries) and return shaped, pre-joined summaries",
     ],
     correct: 3,
     explanation:
-      "REST shapes suit programmers with cheap loops and persistent variables; models pay context for every byte and every round trip. `search_orders(query, status, date_range)` returning shaped summaries beats get_order + get_customer + list_shipments chained by the model. Rewriting `get_data(id)` into a task-level tool is checkpoint-quiz question 3 for a reason.",
+      "REST shapes suit programmers with cheap loops and persistent variables; models pay context for every byte and every round trip. `search_orders(query, status, date_range)` returning shaped summaries beats get_order + get_customer + list_shipments chained by the model. Rewriting `get_data(id)` into a task-level tool is the classic whiteboard exercise for a reason.",
   },
   {
     question: "Why are tool descriptions 'prompts in disguise'?",
     options: [
-      "The client concatenates them into the system prompt verbatim, replacing your instructions",
-      "They're validated by the API for prompt-injection patterns",
+      "The client concatenates every connected server's descriptions verbatim into the system prompt, where later text overrides earlier text — so a third-party description can silently replace your own instructions, which is why hosts limit how many servers you may attach",
+      "They're scanned by the provider's API for prompt-injection patterns before the model ever sees them — 'prompts in disguise' refers to that screening step, which is what makes third-party descriptions safe to load",
       "The model selects tools and forms arguments based on names, descriptions, and schemas alone — so a description change (e.g., adding 'NOT for refunds — use process_refund') directly changes agent behavior, exactly like editing a prompt",
-      "They're only shown to human users browsing the server",
+      "They're rendered only to humans browsing the server in the MCP Inspector; the model itself sees just the name and input schema, so a description is documentation for developers, not something that steers behavior",
     ],
     correct: 2,
     explanation:
@@ -67,9 +67,9 @@ export const quiz06: QuizQuestion[] = [
     question:
       "A tool can match 200k tokens of results. What's the right response strategy?",
     options: [
-      "Return everything — the model will skim what it needs",
-      "Silently return the first 1,000 tokens so the response stays small",
-      "Refuse to answer queries that match too much data",
+      "Return everything and let the model's attention skim to the relevant parts — withholding matches risks the model answering from incomplete information, and the context window is exactly the budget you were given to spend",
+      "Quietly return the first 1,000 tokens so the response stays inside budget — the model doesn't need to know about the cutoff, and announcing that results were dropped would just spend more of the window on metadata the model can't act on anyway",
+      "Refuse the query outright with an error whenever the match count would exceed the budget — a partial view is worse than none, because the model will reason from incomplete data",
       "Server-enforced caps and pagination (bounded page_size, per-item truncation), plus an explicit signal — 'showing 20 of 3,400; more available, request page 2 or refine the query' — so the model knows the view is partial and what to do next",
     ],
     correct: 3,
@@ -80,10 +80,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "How should a tool signal errors, and why not just raise exceptions?",
     options: [
-      "Raise exceptions — the client converts them into retries automatically",
+      "Raise exceptions and let them propagate — the SDK maps them to JSON-RPC protocol errors, and clients respond to those with automatic retries and backoff, so the model never has to see failure text at all",
       "Return instructive text the model can act on ('Ambiguous: 3 customers match — call again with a full name'; 'auth expired — tell the user, do not retry'), because the model can read and recover from in-band results but learns nothing actionable from a dead call",
-      "Return HTTP status codes as bare integers",
-      "Log the error server-side and return an empty string",
+      "Return bare HTTP status codes as integers — models have seen the web's error conventions in training, so a 404 or 401 carries the full signal at a fraction of the tokens a prose message would cost under a response budget",
+      "Log the full error server-side and return an empty string — that guarantees stack traces and credentials can never leak into model context, and an empty result is the conservative failure mode: the model simply concludes there's no matching data and moves on without retrying",
     ],
     correct: 1,
     explanation:
@@ -93,10 +93,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "Name the sandbox property and the attack it prevents. Which pairing is correct?",
     options: [
-      "Read-only filesystem → prevents infinite loops",
-      "Memory limits → prevent data exfiltration",
+      "Read-only filesystem → prevents infinite loops, since code that can't write scratch files can't accumulate the state a runaway loop needs; pair it with a non-root user and fork bombs are covered as well",
+      "Memory limits → prevent data exfiltration, because a process capped at a few hundred megabytes can't buffer large files for transfer; once memory is bounded, network isolation is only needed on servers that also hold credentials, since exfiltration without a buffer isn't practical",
       "No network access → prevents exfiltrating data/secrets and calling attacker infrastructure; memory/CPU/pids limits → prevent resource-exhaustion bombs; timeout → kills infinite loops; ephemeral non-root read-only FS → prevents persistence and privilege escalation",
-      "Timeouts → prevent fork bombs",
+      "Timeouts → prevent fork bombs by killing the parent before it can spawn children, which is why pids limits are considered a redundant second layer that hardened sandbox configurations often drop",
     ],
     correct: 2,
     explanation:
@@ -106,9 +106,9 @@ export const quiz06: QuizQuestion[] = [
     question: "What problem does MCP solve versus A2A?",
     options: [
       "MCP connects an agent to tools and data (agent↔tool); A2A connects agents to other agents as opaque peers across trust boundaries (agent↔agent) — complementary, and an A2A peer may use MCP internally",
-      "A2A is the successor protocol that deprecates MCP",
-      "MCP is for local servers, A2A is MCP-over-HTTP",
-      "MCP handles authentication while A2A handles tool schemas",
+      "A2A is the successor protocol: it generalizes MCP's tools into tasks and agent cards, so new systems should expose an A2A endpoint and treat MCP servers as a legacy compatibility layer",
+      "MCP is the local, stdio-only protocol; A2A is the same message set carried over HTTP for remote, multi-client deployments — which is why servers that need streamable HTTP are sometimes described as running in 'A2A mode'",
+      "MCP handles authentication and credential storage between the two parties, while A2A defines the tool schemas and calling conventions — every real deployment runs both, one per layer",
     ],
     correct: 0,
     explanation:
@@ -117,10 +117,10 @@ export const quiz06: QuizQuestion[] = [
   {
     question: "When should you choose stdio versus streamable HTTP transport?",
     options: [
-      "Always streamable HTTP — stdio is legacy",
-      "stdio for anything with more than one user",
+      "Always streamable HTTP — stdio was the bootstrap transport and is effectively legacy; production means a real web service, and auth, TLS, and logging only exist at the HTTP layer, so starting on stdio just defers the inevitable migration",
+      "stdio whenever more than one user needs the server, since spawning a private subprocess per user isolates their sessions — a shared HTTP deployment is the last resort, because multiplexed sessions all run inside one process's trust boundary",
       "stdio when the client and server share a machine and a single user — the client spawns the server as a subprocess, inheriting local trust with zero deployment; streamable HTTP when the server is remote or shared by multiple clients, which brings auth, TLS, and ops obligations",
-      "They're interchangeable; pick by personal taste",
+      "They're fully interchangeable because transport is orthogonal to capabilities — the same decorated functions serve both wires — so the choice is team preference: flip the run() flag whenever convenient, since nothing about authentication, trust, or operations changes with the transport",
     ],
     correct: 2,
     explanation:
@@ -129,10 +129,10 @@ export const quiz06: QuizQuestion[] = [
   {
     question: "What are the three layers of testing for an MCP server?",
     options: [
-      "Linting, formatting, and type-checking",
+      "Linting, type-checking, and schema validation — FastMCP derives schemas from type hints, so a server that passes a strict type-checker is already protocol-correct, and behavior follows from the types",
       "Unit tests on the tool logic as plain functions (mock the real API); integration tests that speak actual MCP — spawn the server over stdio with a ClientSession, list and call tools, assert on results; and adversarial/end-to-end testing through a real client where someone tries to break it (bad IDs, huge queries, destructive calls without confirm)",
-      "Load testing, soak testing, and chaos testing only",
-      "Testing is unnecessary — the protocol validates everything",
+      "Load testing, soak testing, and chaos testing — an MCP server is a web service first, so the standard production-readiness ladder applies unchanged and covers the tool logic implicitly along the way",
+      "Contract tests validating every message against the spec's published JSON schemas — if each request and response validates, separate unit and integration layers add nothing, because the protocol layer is where servers actually break",
     ],
     correct: 1,
     explanation:
@@ -142,9 +142,9 @@ export const quiz06: QuizQuestion[] = [
     question:
       "A model keeps calling your destructive delete_project tool during exploratory questions. Which defense is the right FIRST layer, within your server?",
     options: [
-      "Remove the tool — destructive operations can never be exposed",
-      "Rely on the host app's approval dialog and change nothing",
-      "Rename the tool to something the model won't notice",
+      "Remove the tool from the server entirely — destructive operations can never be safely exposed to a model, so deletion has to remain a human-only path, and anything less leaves you one hallucinated argument away from data loss",
+      "Rely on the host's human-approval dialog and change nothing server-side — hosts like Claude Desktop already prompt the human before sensitive tool calls, and duplicating that gate inside the server just makes every legitimate deletion a two-step chore for the layer that actually owns the user relationship",
+      "Return an 'Are you sure?' message and act when the model replies affirmatively — a natural-language confirmation captures the user's intent without cluttering the schema with an extra parameter the model might set incorrectly",
       "A two-phase confirm parameter defaulting to false — the bare call returns a preview of exactly what would be deleted, and only an explicit confirm=true call acts — with the docstring instructing that confirmation requires the user's explicit approval of the previewed item",
     ],
     correct: 3,
@@ -155,10 +155,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "Your team just adopted MCP for a new agent product. A skeptical engineer says 'great, now our tools are automatically good, our context usage is handled, and third-party servers are safe to connect.' What's wrong with that claim?",
     options: [
-      "Nothing — standardizing the wire is exactly what guarantees tool quality, context economy, and server safety",
+      "Nothing — standardization is precisely how the ecosystem delivers all three: protocol compliance testing enforces a bar on tool quality, capability negotiation keeps unused schemas out of context until the model asks for them, and the initialize handshake authenticates each server before any tools/call is allowed to flow",
       "MCP standardizes the wire only: it says nothing about whether a tool is well-designed, how much context every connected server's schemas consume, or whether a given server's code and output can be trusted — each is a separate problem you still have to solve (Lessons 4 and 5)",
-      "MCP guarantees tool quality and context economy, but never addresses server trust",
-      "MCP guarantees server trust via mandatory code review, but never addresses tool quality",
+      "It's only one-third wrong — MCP does guarantee tool quality (schemas are validated at tools/list) and context economy (only task-relevant schemas are loaded by default), but server trustworthiness is genuinely out of scope",
+      "It's two-thirds wrong — MCP guarantees server trust through mandatory registry review and package signing, but tool quality and context usage are explicitly left to hosts",
     ],
     correct: 1,
     explanation:
@@ -168,10 +168,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "You connect five MCP servers averaging eight tools each, and the agent's tool selection gets measurably worse — even though every individual tool is well-designed. What's happening, and what's the fix?",
     options: [
-      "The servers are competing for network bandwidth; fix it by upgrading your connection",
+      "Five stdio subprocesses are contending for the host's pipes and scheduler, so tool results arrive slowly and get attributed to the wrong session; fix it by moving the busiest servers to streamable HTTP, where responses stream independently",
       "Every connected server's full tool schemas ride in every request regardless of relevance, and selection accuracy degrades as the visible tool count grows; fix it with deferred loading / a tool-search capability (or manual curation of which servers are connected) rather than editing any single tool's docstring",
-      "MCP enforces a hard 20-tool limit per host, so five servers of eight tools each is simply invalid and must be reduced",
-      "The fix is always to merge all five servers' tools into one mega-tool",
+      "MCP caps a host at 20 visible tools; past that, the client silently drops schemas from the end of the tools/list response, so some tools are invisible to the model and it substitutes near-matches for the ones it can't see — the fix is staying under the cap, since beyond it selection behavior is undefined by the spec",
+      "Merge all five servers into one server exposing a single mega-tool with a 'mode' argument — one schema always costs fewer tokens than forty, and the model only ever has to make one selection decision",
     ],
     correct: 1,
     explanation:
@@ -181,10 +181,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "What is the 'confused deputy' problem as it applies to an MCP server, and why does it matter even if every user of your agent is fully trusted?",
     options: [
-      "It's when two servers both claim the same tool name; the client can't tell which one to call",
+      "It's a namespace collision: two servers claim the same tool name and the client can't tell which one to route a tools/call to, so the 'deputy' gets confused about which server was meant",
       "A program (the server) holds more authority than the party asking it to act (the model); if untrusted content in the model's context manipulates the model into issuing a tool call, the server executes it with its own full credential because it can't distinguish a genuine user request from a manipulated one — so the risk exists independent of user trust",
-      "It only matters when the user is malicious, since a trusted user would never trigger a harmful tool call",
-      "It's a client-side bug where the wrong session ID gets attached to a tool call",
+      "It only matters when a user is malicious — a trusted user never asks for a harmful call, so with vetted users the deputy has nobody to be confused by, and the right mitigation is user vetting rather than server design",
+      "It's a client-side session bug: the wrong session ID gets attached to a tools/call, so one user's request executes with another user's authority — the standard argument for stdio's process-per-client isolation",
     ],
     correct: 1,
     explanation:
@@ -194,10 +194,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "What is the 'lethal trifecta,' and why does a well-connected MCP host assemble it easily?",
     options: [
-      "Three unrelated bugs — a race condition, a memory leak, and a null pointer — that together crash the server",
+      "The three protocol-level failure modes — version mismatch, capability gap, and stdout pollution — which a well-connected host hits easily because every additional server multiplies handshake and framing surface",
       "An agent that has (1) access to private/sensitive data, (2) exposure to untrusted content such as fetched web pages or tickets, and (3) a channel that can exfiltrate or act on that data — a host with a filesystem server, a web-fetch server, and a write-capable API server live in the same session assembles all three legs without anyone deciding to",
-      "Three transport protocols (stdio, SSE, streamable HTTP) running simultaneously, which the spec forbids",
-      "Three servers sharing one OAuth token, which always triggers a security review",
+      "Running all three transports at once (stdio, the legacy HTTP+SSE arrangement, and streamable HTTP), which the spec forbids because sessions can't be safely multiplexed across different wires",
+      "Three or more servers sharing one OAuth bearer token — well-connected hosts drift toward a single shared credential for convenience, which destroys per-client revocation and attribution the moment it leaks",
     ],
     correct: 1,
     explanation:
@@ -207,10 +207,10 @@ export const quiz06: QuizQuestion[] = [
     question:
       "Why is connecting to a third-party MCP server a different — and larger — risk than adding a typical third-party library dependency?",
     options: [
-      "It isn't different; both are just code you didn't write, and the same review process covers both identically",
+      "It isn't materially different — both are code you didn't write running with access you granted, so the same dependency review (read the source, pin a version, check maintenance) covers both identically, and once that review passes, the server's tool results deserve the same trust as a library's return values, since the audited code is what produces them in both cases",
       "A malicious or compromised MCP server is simultaneously arbitrary code execution (like any dependency) AND a trusted voice inside the model's context — its descriptions shape what the model decides to call and its responses shape what the model does next — so even a server whose code stays clean can start injecting the model via a compromised upstream data source",
-      "Third-party MCP servers cannot hold credentials, so the worst case is limited to reading public data",
-      "MCP servers are sandboxed by the protocol itself, so code risk is eliminated; only the library-dependency case carries code risk",
+      "Third-party MCP servers can't hold credentials of their own — the host injects short-lived, scoped tokens per call and revokes them afterward — so the worst case is bounded to reading data the current session already exposed",
+      "The risk runs the other way: an MCP server is sandboxed by the protocol itself — the client validates every message's shape and mediates all I/O — so server-side code risk is eliminated and only the library case can execute arbitrary code on your machine",
     ],
     correct: 1,
     explanation:

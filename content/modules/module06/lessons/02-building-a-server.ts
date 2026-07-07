@@ -173,7 +173,7 @@ def order_investigation(order_id: str) -> str:
     {
       type: "keypoints",
       points: [
-        "Tools are model-invoked; resources are application-invoked; prompts are user-invoked. That's checkpoint-quiz material and a design compass.",
+        "Tools are model-invoked; resources are application-invoked; prompts are user-invoked. That's quiz material and a design compass.",
         "Wrong-primitive smell: reference data modeled as a tool gets skipped and guessed instead of called; an action modeled as a resource never fires because nothing invokes it.",
         "Whatever a resource returns still occupies context and costs tokens on every subsequent turn — resources need response budgeting too, not just tools.",
         "FastMCP: `@mcp.tool()` on a typed, docstringed function → name, schema, description generated for you.",

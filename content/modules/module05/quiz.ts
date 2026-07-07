@@ -5,10 +5,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "What does LangGraph's checkpointer enable that a bare while-loop doesn't? (Pick the answer naming all three.)",
     options: [
-      "Faster model inference, lower token prices, and automatic prompt optimization",
+      "Automatic retries of failed nodes, transactional rollback of tool side effects, and guaranteed exactly-once execution of side-effecting calls",
       "Resume after a crash, time-travel inspection of past states, and durable human-in-the-loop pauses",
-      "Automatic parallelism, built-in web search, and self-improving prompts",
-      "Guaranteed determinism, unlimited context windows, and free retries",
+      "Dynamic fan-out of parallel workers, reducer-merged concurrent writes, and typed state validation between nodes",
+      "Deterministic replay of model outputs, guaranteed identical results on resume, and free re-execution of failed steps",
     ],
     correct: 1,
     explanation:
@@ -18,8 +18,8 @@ export const quiz05: QuizQuestion[] = [
     question:
       "What is the structural difference between orchestrator-workers and handoffs?",
     options: [
-      "Orchestrator-workers uses one model for everything; handoffs require different model providers",
-      "Handoffs are faster because they skip the planner",
+      "Orchestrator-workers requires a shared reducer-merged state schema, while handoffs can only communicate through message passing with no shared memory at all",
+      "Handoffs are the fan-out version of orchestrator-workers: instead of delegating subtasks one at a time, the task is dispatched to several peers in parallel and their results are reducer-merged",
       "In orchestrator-workers, control always returns to a central agent that integrates results; in a handoff, ownership transfers sideways to a peer and doesn't return",
       "They are the same pattern with different names in different frameworks",
     ],
@@ -32,9 +32,9 @@ export const quiz05: QuizQuestion[] = [
       "A pipeline has five sequential agent stages, each 90% reliable. Roughly what is end-to-end reliability, and what makes the practical situation even worse than that number?",
     options: [
       "~59% (0.9^5) — and worse, failed stages feed subtly-wrong content downstream, so later stages build confidently on errors",
-      "90% — reliability is determined by the weakest stage, not the chain",
-      "~98% — stages cross-check each other, so reliability improves with depth",
-      "~59% — but retries make the number irrelevant in practice",
+      "90% — checkpointing isolates each stage's failures, so the chain inherits the reliability of the weakest single stage rather than multiplying them together",
+      "~98% — downstream stages act as critics that catch upstream mistakes, so reliability improves with pipeline depth",
+      "~59% (0.9^5) — but wrapping each node in a retry policy restores roughly per-stage reliability end to end, so the multiplication only matters for graphs without retries",
     ],
     correct: 0,
     explanation:
@@ -44,10 +44,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "Which of these is a legitimate technical justification for splitting into multiple agents?",
     options: [
-      "Separation of concerns — each agent's code is cleaner in its own file",
+      "Separation of concerns — putting each role behind its own agent boundary keeps prompts and tools cleanly modular, which is worth the runtime handoff cost",
       "Each worker needs a clean, isolated context window because accumulated history degrades the monolithic agent's attention",
-      "The architecture diagram maps nicely onto the human team's org chart",
-      "More agents means more total intelligence applied to the problem",
+      "The architecture diagram maps nicely onto the human team's org chart, so responsibilities stay legible to stakeholders",
+      "Adding agents multiplies the reasoning applied to the problem — five specialist perspectives catch more than one generalist pass, the way extra reviewers catch more bugs",
     ],
     correct: 1,
     explanation:
@@ -57,9 +57,9 @@ export const quiz05: QuizQuestion[] = [
     question:
       "What should a handoff payload contain, and why is passing the full conversation history usually wrong?",
     options: [
-      "Just the task in one sentence — receivers should figure out the rest",
-      "The full history, because more context always improves model output",
-      "Whatever fits in the context window, oldest first",
+      "Just the task in one sentence — a capable receiver should re-derive whatever context it needs with its own tool calls",
+      "The full conversation history, because the receiver can't know in advance which detail will matter — more context monotonically improves output, and trimming risks deleting the one fact the specialist needs",
+      "As much recent history as fits in the receiver's context window, newest first, so the receiver's own attention decides what matters instead of the sender guessing",
       "A structured brief — task, relevant context, constraints, expected output — because full history bloats the receiver's context, buries the task in noise, and leaks irrelevant content across roles",
     ],
     correct: 3,
@@ -70,10 +70,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "Mechanically, how does a human-in-the-loop interrupt work in a checkpointed LangGraph?",
     options: [
-      "The node blocks on input() until a human types at the server's terminal",
+      "The node blocks on input() while the checkpointer keeps the thread alive, so the graph waits in-process until a human responds",
       "The node signals an interrupt: state is checkpointed, execution stops, and invoke() returns with the pending interrupt; later, any process resumes the same thread_id passing the human's response, and the node continues with that value",
-      "The graph emails the human and polls an inbox every 30 seconds inside the node",
-      "LangGraph spins up a web UI automatically and pauses the Python GIL",
+      "The checkpointer registers a webhook with LangGraph's server and holds the node's Python frame suspended in memory until the human's response arrives",
+      "compile() pauses the graph before nodes listed in interrupt_before, and resuming requires re-invoking from START because pre-interrupt steps aren't persisted",
     ],
     correct: 1,
     explanation:
@@ -83,10 +83,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "Your critic agent approves every draft, so the revision loop never fires. What's the most likely diagnosis and fix?",
     options: [
-      "The model is too small — swap in the largest available model",
-      "Critics are inherently useless — remove the loop",
+      "The critic needs a stronger model than the writer — an equal-size critic can't reliably find flaws in output from an equally capable model, so swap in the largest available model for the critique role even if it raises cost",
+      "The writer and critic share one graph state, so the critic is anchored on the writer's reasoning — split them into separate processes with message passing so the critique is truly independent",
       'The critic\'s prompt asks a vague "is this good?" and it lacks a rubric and the original requirements — give it a concrete checklist, the plan/question in its brief, and require per-item grades with quoted evidence',
-      "The temperature is too low — raise it so the critic gets more opinionated",
+      "The critic's sampling is too deterministic — raise the temperature so it explores more critical readings of the draft instead of the agreeable default",
     ],
     correct: 2,
     explanation:
@@ -96,9 +96,9 @@ export const quiz05: QuizQuestion[] = [
     question:
       "Why can a worker agent with a clean 5k-token context outperform a single agent carrying 100k tokens of accumulated history on the same subtask?",
     options: [
-      "Smaller contexts are billed at a discount, so the provider allocates better hardware",
-      "It can't — more context always helps",
-      "The 5k worker uses a different, faster model automatically",
+      "The 5k prompt fits in a single attention window and is processed losslessly, whereas 100k contexts get chunked and summarized by the API before the model ever sees them",
+      "It can't — the 100k agent strictly dominates the 5k worker: it holds every fact the worker was briefed with plus the full history that produced it, and the model's attention will surface whatever is relevant at the moment it's needed",
+      "Frameworks route small-context calls to a faster distilled model automatically, so the worker's speed advantage compounds into a quality advantage",
       "Long contexts full of stale transcripts, dead ends, and tool dumps dilute attention and get old errors treated as facts; the worker's context contains exactly its task and nothing else",
     ],
     correct: 3,
@@ -110,9 +110,9 @@ export const quiz05: QuizQuestion[] = [
       "How would you detect that a multi-agent system should be collapsed to single-agent?",
     options: [
       "Run a single-agent baseline with the same tools/model/questions; collapse if quality is within noise of baseline while cost/latency are multiples, if handoff logs show payloads that merely restate prior state, or if workers spend turns re-deriving context the monolith would have had",
-      "Count the agents; more than three is always too many",
-      "Ask the model whether it prefers working alone",
-      "Check GitHub stars of the framework you used",
+      "Apply the error-compounding formula: if per-stage reliability raised to your node count falls below 80%, the system is over-split and should collapse regardless of measured output quality",
+      "Inspect the graph topology: a graph with more nodes than distinct tool sets, or any cycle in it, is structurally redundant and should be collapsed",
+      "Compare per-agent token spend: whenever the orchestrator consumes more tokens than any single worker, coordination overhead has exceeded its value",
     ],
     correct: 0,
     explanation:
@@ -122,10 +122,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "In a LangGraph state schema, two parallel searcher nodes both write to a `findings: list[str]` field. What must you do to avoid one update clobbering the other?",
     options: [
-      "Run the searchers sequentially — parallel writes are impossible",
+      "Order the searchers with an explicit edge so their writes serialize — graph state is single-writer by design, and concurrent writes to one field are impossible",
       "Annotate the field with a reducer, e.g. `Annotated[list[str], operator.add]`, so LangGraph merges concurrent updates by appending instead of replacing",
-      "Have each searcher write to the same string field with a lock",
-      "Use global variables instead of graph state",
+      "Wrap each write in a threading.Lock inside the node so the appends are mutually exclusive, as you would for any shared Python list",
+      "Move the accumulation out of graph state into a module-level list, which both nodes can share safely since list appends are atomic in CPython",
     ],
     correct: 1,
     explanation:
@@ -135,9 +135,9 @@ export const quiz05: QuizQuestion[] = [
     question:
       "What is the correct way to route after a critic node in LangGraph, including loop safety?",
     options: [
-      "Have the critic node call the writer node directly as a Python function",
-      "Use a fixed edge back to the writer — the model will know when to stop",
-      "Raise an exception in the critic to escape the graph when done",
+      "Have the critic call the writer's node function directly when revision is needed — plain Python recursion keeps the loop logic where it's easiest to unit-test",
+      "Add a fixed edge from critic back to writer and have the critic append APPROVED to its critique when satisfied — LangGraph detects that state has stopped changing between steps and halts the cycle automatically, so no explicit router is needed",
+      "Raise a GraphInterrupt from the critic once the draft passes, since exceptions are the supported mechanism for exiting a cycle early",
       "add_conditional_edges with a pure router function that reads state (critique + a revision counter) and returns a label mapped to either the writer or END — with a hard cap on revisions stored in state",
     ],
     correct: 3,
@@ -149,9 +149,9 @@ export const quiz05: QuizQuestion[] = [
       "For Lab 05's baseline comparison, why must the single-agent baseline get the same tools and model as the multi-agent system, and what's the most common way these comparisons lie?",
     options: [
       "Because otherwise you're comparing architecture and capability at once, so the numbers attribute nothing; the common lie is undercounting multi-agent cost by forgetting orchestrator/critic tokens and handoff overhead",
-      "It doesn't matter — any baseline shows due diligence",
-      "The baseline should use a weaker model so the multi-agent system looks good in the README",
-      "Same tools are needed only to keep the code DRY; comparisons can't really lie",
+      "A stronger model is the fairer single-agent baseline — the whole point of multi-agent is composing cheaper models, so matching models understates the architecture's advantage and biases the comparison toward the monolith before a single question is run",
+      "The baseline should get the same model but fewer tools, since the multi-agent system spreads its tools across roles and no single context could hold all of them at once",
+      "Matching tools only matters for reproducibility; the usual way these comparisons lie is judge position bias, which randomizing answer order already corrects",
     ],
     correct: 0,
     explanation:
@@ -161,10 +161,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "What is 'prompt opacity' as a framework cost, and why is it distinct from the framework simply being buggy?",
     options: [
-      "It means the framework's source code is closed-source, so you can't read how it works",
+      "It means the framework's orchestration internals are closed-source, so you can't tell whether a defect lives in your node or in the execution engine — the debugging-through-layers tax under another name",
       "It means a helper (structured-output wrapper, message formatter) can reshape, append to, or reorder the text actually sent to the model, invisibly to you — you can't fix what you can't see the model receiving, even when the framework has no bugs at all",
-      "It's a synonym for high token cost — opaque prompts are just long prompts",
-      "It only matters for open-weight models, not for hosted APIs like Claude",
+      "It names the hidden token cost of framework-injected boilerplate: appended instructions and few-shot examples inflate every call's input tokens, making opaque prompts primarily a billing problem",
+      "It only applies to self-hosted open-weight models — hosted APIs like Claude's log every request, so the final prompt is always inspectable in the provider dashboard",
     ],
     correct: 1,
     explanation:
@@ -174,10 +174,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "A node with `operator.add` on its `findings` field is wrapped in a framework retry policy. On failure, the whole node re-runs from the top. What's the resulting bug, and why?",
     options: [
-      "None — retries and reducers are unrelated concerns",
-      "The retry policy silently disables the reducer, so `findings` reverts to last-write-wins",
+      "None — before retrying, LangGraph rolls the thread back to the checkpoint taken before the node started, discarding any partial update from the failed attempt, so automatic retries are always safe to combine with additive reducers and need no idempotency work",
+      "The retried attempt runs against a stale snapshot: because the checkpoint predates the node, the retry can't see updates from parallel branches, and the reducer merges against outdated state",
       "Retry policies assume the retried unit is idempotent, but an additive reducer accumulates every attempt — if the node's earlier work succeeded before a later line failed, the retry re-runs the successful part too and appends a duplicate",
-      "The graph fails to compile, because retry policies are incompatible with any reducer other than the default",
+      "The graph fails to compile, because retry policies require the default last-write-wins semantics on every field they touch",
     ],
     correct: 2,
     explanation:
@@ -187,10 +187,10 @@ export const quiz05: QuizQuestion[] = [
     question:
       "A node calls a real, side-effecting API (e.g., sends an email) and the process crashes before the checkpoint recording the node's completion is written. On resume, what happens by default, and what's the standard fix?",
     options: [
-      "The graph automatically detects the side effect already happened and skips it",
+      "The checkpointer replays the node's recorded return value instead of re-executing it, so the email is not re-sent — deterministic replay is exactly what checkpoints exist to provide",
       "The node re-runs from its top, so the side-effecting call can fire a second time; the fix is a stable idempotency key (derived from thread_id + a fixed business key, not a per-attempt random value) that the downstream system dedupes on — the same discipline as Module 1's tool-calling idempotency, one layer up",
-      "Nothing — LangGraph checkpoints are transactional with all side effects by design",
-      "The graph refuses to resume any thread that contains a side-effecting node",
+      "Nothing double-fires — the checkpoint write and the node's execution share one transaction, so either both the send and its record happened or neither did, and resume picks the right branch",
+      "Resume fails with an error because the pending-writes bookkeeping no longer matches; the fix is deleting the stale checkpoint and re-running the thread from START",
     ],
     correct: 1,
     explanation:
@@ -201,9 +201,9 @@ export const quiz05: QuizQuestion[] = [
       "For a graph that drafts a payment request, gets human approval, then dispatches it to a payment provider, where should the `interrupt()` for approval go, and why?",
     options: [
       "Immediately before the node that makes the actual payment-provider call — everything reversible (drafting, validating) happens before the gate, so the human approves the smallest, most accurate preview of the one irreversible action",
-      "At the very start of the graph, before any drafting, so the human approves the raw request",
-      "Anywhere is fine as long as it happens somewhere before the graph reaches END",
-      "After the payment dispatch, as a confirmation step",
+      "At the very start of the graph, before any drafting — gating later means model-generated content shapes what the human believes they authorized, so approval belongs at the point of maximum leverage",
+      "Between drafting and validation, so a rejected draft never wastes validation compute — since the checkpointer durably preserves state at every step either way, exact placement is a performance detail rather than a safety one, so optimize it for latency",
+      "Immediately after the payment dispatch, so the human confirms against the provider's actual response rather than a prediction of it",
     ],
     correct: 0,
     explanation:
@@ -211,15 +211,15 @@ export const quiz05: QuizQuestion[] = [
   },
   {
     question:
-      "A baseline comparison shows multi-agent scoring 8.0/10 vs. single-agent's 7.8/10 on an LLM-judge, at 4.75x the cost and 2.3x the latency. The judge's own agreement with hand-labels is 90%. What's the defensible conclusion?",
+      "A baseline comparison shows multi-agent scoring 8.4/10 vs. single-agent's 8.1/10 on an LLM-judge, at 3.5x the cost and 2x the latency. The judge's own agreement with hand-labels is 88%. What's the defensible conclusion?",
     options: [
-      "Ship multi-agent — 8.0 beats 7.8, full stop",
-      "The cost and latency deltas are real, directly measured; the 0.2-point quality delta is plausibly within the judge's own ~10% disagreement rate with human labels and hasn't been shown to be a real difference — get a confidence interval on the quality gap before treating it as evidence, and lean toward the cheaper single agent absent that evidence",
-      "Ignore cost and latency entirely — quality is the only metric that matters for a portfolio piece",
-      "The comparison is invalid because the judge should have used temperature 0 for consistency",
+      "Ship multi-agent — 8.4 beats 8.1 on the primary metric, and cost and latency are engineering problems a later optimization pass (caching, cheaper worker models) can claw back",
+      "The cost and latency deltas are real, directly measured; the 0.3-point quality delta is plausibly within the judge's own ~12% disagreement rate with human labels and hasn't been shown to be a real difference — get a confidence interval on the quality gap before treating it as evidence, and lean toward the cheaper single agent absent that evidence",
+      "Trust the quality gap over the cost numbers — small-sample token and timing measurements are noisier than an LLM judge that agrees with careful human labels 88% of the time",
+      "The comparison is invalid until the judge is rerun at temperature 0, which removes sampling noise and makes the 0.3-point gap trustworthy as it stands",
     ],
     correct: 1,
     explanation:
-      "Cost and latency are direct measurements; a 0.2-point gap read off a judge with 90% human agreement can easily be noise, not signal. The evidence-based-escalation discipline applies here too: don't let an unvalidated quality delta justify a large, well-measured cost increase. Get significance (more questions, repeated randomized-order judging) before concluding multi-agent actually wins on quality.",
+      "Cost and latency are direct measurements; a 0.3-point gap read off a judge with 88% human agreement can easily be noise, not signal. The evidence-based-escalation discipline applies here too: don't let an unvalidated quality delta justify a large, well-measured cost increase. Get significance (more questions, repeated randomized-order judging) before concluding multi-agent actually wins on quality.",
   },
 ];

@@ -32,6 +32,13 @@ export const lesson02: Lesson = {
       provider: "claude",
       code: `# Each labeled example: the case, the human verdict, and the agent output.
 # labels = [{"id":..., "output":..., "human": "pass"/"fail"}, ...]
+import json
+
+import anthropic
+
+client = anthropic.Anthropic()
+labels = json.load(open("labels.json"))          # your 30+ hand-labeled examples
+RUBRIC = open("rubric_faithfulness.md").read()   # anchored defs + pass/fail examples
 
 def run_judge(output: str, rubric: str) -> str:
     # Force a structured verdict via a tool schema (Module 1 pattern).
@@ -76,6 +83,12 @@ assert rate >= 0.85, "rubric not trustworthy yet — tune and re-measure"`,
           code: `# Each labeled example: the case, the human verdict, and the agent output.
 # labels = [{"id":..., "output":..., "human": "pass"/"fail"}, ...]
 import json
+
+from openai import OpenAI
+
+client = OpenAI()
+labels = json.load(open("labels.json"))          # your 30+ hand-labeled examples
+RUBRIC = open("rubric_faithfulness.md").read()   # anchored defs + pass/fail examples
 
 VERDICT_SCHEMA = {
     "type": "object",

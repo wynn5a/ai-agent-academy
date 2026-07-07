@@ -6,6 +6,12 @@ export const lab04: Lab = {
     "Give the Lab 02 agent long-term memory: a persistent store with provenance, a disciplined write path (extraction, dedupe, contradiction resolution), a scored read path injecting fenced memories at session start, threshold-triggered compaction — and a self-written red-team test proving the write path resists memory injection. Gate G2 ends with Claude attempting a novel injection against your defenses.",
   sections: [
     {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: "This lab extends your Lab 02 agent — have it working first. New dependency: `pip install sentence-transformers` for memory embeddings (already installed if you did Lab 03). SQLite ships in Python's standard library, so the store needs nothing extra. Budget one to two days including the red-team tests.",
+    },
+    {
       type: "heading",
       text: "What you're building",
     },

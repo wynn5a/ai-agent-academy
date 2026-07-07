@@ -197,6 +197,14 @@ print(resp.output_text)`,
     },
     {
       type: "heading",
+      text: "Testing an MCP server",
+    },
+    {
+      type: "paragraph",
+      text: "The client you just wrote is more than a demo — it's the middle layer of a three-layer testing story. **Unit tests** exercise the tool logic as plain functions with the real API mocked out: no protocol involved, fast enough to run on every save, verifying the joins, truncation, and error branches. **Protocol integration tests** drive the server the way a host would — spawn it over stdio with a `ClientSession`, `initialize`, `list_tools`, then call each tool and assert on the returned text (including the error strings: 'Ambiguous: 3 customers match' is part of your contract) — this layer catches what unit tests can't see: schema generation from type hints, serialization, stdout pollution. Finally, an **adversarial pass** puts a person (or a model) on the client side actively trying to break the server: nonexistent IDs, expired auth, queries that match everything, destructive calls without confirm. Unit tests prove the logic, integration tests prove the wire, and the adversarial pass proves the design.",
+    },
+    {
+      type: "heading",
       text: "Whiteboard drills",
     },
     {

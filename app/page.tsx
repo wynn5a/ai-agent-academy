@@ -47,7 +47,7 @@ function Ring({ percent }: { percent: number }) {
 }
 
 export default function Dashboard() {
-  const { moduleStats, gatePassed, ready } = useProgress();
+  const { moduleStats, gatePassed, ready, completedLessons } = useProgress();
 
   const overall = ready
     ? Math.round(
@@ -55,6 +55,40 @@ export default function Dashboard() {
           modules.length,
       )
     : 0;
+
+  // First incomplete step across the curriculum, in order: lessons → quiz → lab.
+  let resume: { href: string; label: string } | null = null;
+  if (ready) {
+    for (const m of modules) {
+      const s = moduleStats(m.slug);
+      if (s.lessonsDone < s.lessonsTotal) {
+        const lesson = m.lessons.find(
+          (l) => !completedLessons[`${m.slug}/${l.slug}`],
+        );
+        if (lesson) {
+          resume = {
+            href: `/modules/${m.slug}/lessons/${lesson.slug}`,
+            label: `Module ${m.id} · ${lesson.title}`,
+          };
+          break;
+        }
+      }
+      if (!s.quizPassed) {
+        resume = {
+          href: `/modules/${m.slug}/quiz`,
+          label: `Module ${m.id} · quiz`,
+        };
+        break;
+      }
+      if (!s.labDone) {
+        resume = {
+          href: `/modules/${m.slug}/lab`,
+          label: `Module ${m.id} · lab`,
+        };
+        break;
+      }
+    }
+  }
 
   return (
     <div>
@@ -68,33 +102,43 @@ export default function Dashboard() {
           hrs/week. Every module ends with a quiz (pass ≥ 80%) and a hands-on
           lab.
         </p>
-        <div className="border-border bg-card mt-5 flex items-center gap-4 rounded-xl border p-4">
-          <Ring percent={overall} />
-          <div>
-            <div className="font-bold text-slate-200">Overall progress</div>
-            <div className="text-sm text-slate-500">
-              Lessons 60% · quiz 25% · lab 15% per module
+        <div className="border-border bg-card mt-5 rounded-xl border p-4">
+          <div className="flex items-center gap-4">
+            <Ring percent={overall} />
+            <div>
+              <div className="font-bold text-slate-200">Overall progress</div>
+              <div className="text-sm text-slate-500">
+                Lessons 60% · quiz 25% · lab 15% per module
+              </div>
+            </div>
+            <div className="ml-auto flex gap-2">
+              {GATES.map((g) => {
+                const passed = ready && gatePassed(g.id);
+                return (
+                  <div
+                    key={g.id}
+                    title={g.requirement}
+                    className={clsx(
+                      "rounded-lg border px-2.5 py-1 text-xs font-bold",
+                      passed
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                        : "border-border text-slate-600",
+                    )}
+                  >
+                    {g.id} {passed ? "✓" : "🔒"}
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="ml-auto flex gap-2">
-            {GATES.map((g) => {
-              const passed = ready && gatePassed(g.id);
-              return (
-                <div
-                  key={g.id}
-                  title={g.requirement}
-                  className={clsx(
-                    "rounded-lg border px-2.5 py-1 text-xs font-bold",
-                    passed
-                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                      : "border-border text-slate-600",
-                  )}
-                >
-                  {g.id} {passed ? "✓" : "🔒"}
-                </div>
-              );
-            })}
-          </div>
+          {resume && (
+            <Link
+              href={resume.href}
+              className="mt-4 block rounded-lg bg-sky-500 px-4 py-2.5 text-center text-sm font-bold text-slate-950 transition-colors hover:bg-sky-400"
+            >
+              {overall === 0 ? "Start here" : "Continue"}: {resume.label} →
+            </Link>
+          )}
         </div>
       </div>
 
@@ -153,18 +197,45 @@ export default function Dashboard() {
         <div className="space-y-2">
           {GATES.map((g) => {
             const passed = ready && gatePassed(g.id);
+            // What's still missing, per module this gate covers.
+            const blockers =
+              !ready || passed
+                ? []
+                : modules
+                    .filter((m) => m.id <= g.afterModule)
+                    .map((m) => {
+                      const s = moduleStats(m.slug);
+                      const parts: string[] = [];
+                      if (s.lessonsDone < s.lessonsTotal)
+                        parts.push(
+                          `lessons ${s.lessonsDone}/${s.lessonsTotal}`,
+                        );
+                      if (!s.quizPassed) parts.push("quiz");
+                      if (!s.labDone) parts.push("lab");
+                      return parts.length
+                        ? `M${m.id} (${parts.join(", ")})`
+                        : null;
+                    })
+                    .filter((b): b is string => b !== null);
             return (
-              <div key={g.id} className="flex items-center gap-3 text-sm">
-                <span
-                  className={clsx(
-                    "w-10 shrink-0 font-bold",
-                    passed ? "text-emerald-400" : "text-slate-500",
-                  )}
-                >
-                  {g.id}
-                </span>
-                <span className="text-slate-400">{g.requirement}</span>
-                <span className="ml-auto">{passed ? "✅" : "🔒"}</span>
+              <div key={g.id} className="text-sm">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={clsx(
+                      "w-10 shrink-0 font-bold",
+                      passed ? "text-emerald-400" : "text-slate-500",
+                    )}
+                  >
+                    {g.id}
+                  </span>
+                  <span className="text-slate-400">{g.requirement}</span>
+                  <span className="ml-auto">{passed ? "✅" : "🔒"}</span>
+                </div>
+                {blockers.length > 0 && (
+                  <div className="mt-1 pl-13 text-xs leading-relaxed text-slate-600">
+                    Still needed: {blockers.join(" · ")}
+                  </div>
+                )}
               </div>
             );
           })}

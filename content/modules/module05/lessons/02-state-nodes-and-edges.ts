@@ -122,7 +122,7 @@ graph = builder.compile()`,
       type: "callout",
       kind: "tip",
       title: "Design the schema before the graph",
-      text: "Sketch the state table first — field, type, written-by, read-by — then draw the graph. If a field has two unrelated writers, split it. If a node needs a field nothing writes, you found a missing edge. This ten-minute exercise is also checkpoint-quiz question 10, and interviewers ask exactly this.",
+      text: "Sketch the state table first — field, type, written-by, read-by — then draw the graph. If a field has two unrelated writers, split it. If a node needs a field nothing writes, you found a missing edge. This ten-minute exercise is also quiz material for this module, and interviewers ask exactly this.",
     },
     {
       type: "heading",

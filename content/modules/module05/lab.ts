@@ -4,8 +4,14 @@ export const lab05: Lab = {
   title: "Multi-Agent Research System with Single-Agent Baseline",
   portfolio: true,
   objective:
-    "Build a planner → parallel searchers → writer → critic research system in LangGraph that answers questions with a cited brief — checkpointed, resumable, with a human approval gate and logged structured handoffs — then benchmark it honestly against a single agent with the same tools. Starter code lives in labs/lab05-multi-agent/.",
+    "Build a planner → parallel searchers → writer → critic research system in LangGraph that answers questions with a cited brief — checkpointed, resumable, with a human approval gate and logged structured handoffs — then benchmark it honestly against a single agent with the same tools. You scaffold the project yourself; the skeleton below is the file map.",
   sections: [
+    {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: 'New dependencies: `pip install langgraph "langchain[anthropic]" langgraph-checkpoint-sqlite` (swap in `langchain[openai]` if you\'re on the OpenAI tab). The last one matters: the durable SQLite checkpointer (`SqliteSaver`) lives in that separate package, and the kill-and-resume acceptance criterion fails with the default in-memory saver. If you use web search rather than a local corpus, you\'ll also need a search tool/API of your choice. Budget two to three days including the baseline comparison.',
+    },
     {
       type: "heading",
       text: "What you're building",

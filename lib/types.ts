@@ -144,28 +144,33 @@ export interface Gate {
   requirement: string;
 }
 
+// A gate passes when every module up to `afterModule` is fully complete:
+// all lessons marked done, quiz ≥ 80%, and lab marked done (see gatePassed
+// in lib/progress.tsx). The requirement strings describe exactly that.
 export const GATES: Gate[] = [
   {
     id: "G1",
     afterModule: 2,
     requirement:
-      "Quiz ≥ 80% on Modules 1–2 + Lab 02 meets all acceptance criteria",
+      "Modules 1–2 complete: every lesson, quiz ≥ 80%, and both labs (Lab 02 meets all acceptance criteria)",
   },
   {
     id: "G2",
     afterModule: 4,
-    requirement: "Quiz ≥ 80% on Modules 3–4 + Lab 03 eval report reviewed",
+    requirement:
+      "Modules 1–4 complete: every lesson, quiz ≥ 80%, and lab — including Lab 03's committed eval report",
   },
   {
     id: "G3",
     afterModule: 6,
-    requirement: "Quiz ≥ 80% on Modules 5–6 + MCP server passes its test suite",
+    requirement:
+      "Modules 1–6 complete: every lesson, quiz ≥ 80%, and lab — including the MCP server passing its test suite",
   },
   {
     id: "G4",
     afterModule: 8,
     requirement:
-      'Full mock interview loop (design + take-home + behavioral) at "hire" bar',
+      'All 8 modules complete (lessons, quizzes ≥ 80%, labs) — then run the full mock interview loop (design + take-home + behavioral) at a "hire" bar, self-assessed',
   },
 ];
 

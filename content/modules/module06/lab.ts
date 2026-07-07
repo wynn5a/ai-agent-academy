@@ -4,8 +4,14 @@ export const lab06: Lab = {
   title: "Production-Quality MCP Server",
   portfolio: true,
   objective:
-    "Wrap a real API you actually use (Pacvue-adjacent, GitHub, Jira, or similar) in a Python MCP server with task-level tools, a resource, and a prompt — tested at three layers, hardened against bad inputs, with a sandboxed run_python tool. This is the artifact Gate G3's practical test attacks live. Starter code lives in labs/lab06-mcp-server/.",
+    "Wrap a real API you actually use (Pacvue-adjacent, GitHub, Jira, or similar) in a Python MCP server with task-level tools, a resource, and a prompt — tested at three layers, hardened against bad inputs, with a sandboxed run_python tool. This is the artifact Gate G3's practical test attacks live. You build it from a fresh directory; the skeleton below is the map.",
   sections: [
+    {
+      type: "callout",
+      kind: "info",
+      title: "Before you start",
+      text: 'New dependencies: `pip install "mcp[cli]" pytest`. **Docker Desktop must be installed and running** — the `run_python` sandbox criterion is a `docker run` under the hood and cannot pass without it. You also need a real MCP client for the connect criterion (Claude Desktop or Claude Code) and credentials for whichever API you wrap. Budget two to three days including the three test layers.',
+    },
     {
       type: "heading",
       text: "What you're building",
