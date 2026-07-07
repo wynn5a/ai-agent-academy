@@ -12,6 +12,10 @@ export const lesson06: Lesson = {
       text: "Everything in this module so far sent `content` as a string. The full truth: `content` is a **list of typed blocks**, and text is only one block type. Add an `image` or `document` block and the same stateless, resend-the-array machinery now carries screenshots and PDFs. No new endpoint, no new mental model.",
     },
     {
+      type: "heading",
+      text: "Images: cost and placement",
+    },
+    {
       type: "code",
       language: "python",
       title: "images: base64 or URL blocks in a user message",
@@ -64,7 +68,25 @@ resp = client.responses.create(
     },
     {
       type: "paragraph",
-      text: "Do the image-token math out loud when asked — it's a resolution question, not a flat fee. A typical image costs on the order of **~1,600 input tokens**; current high-resolution models accept much larger images (up to ~2,500px on the long edge) and a full-resolution image can run to **~4,800 tokens — roughly 3×**. At $3/MTok that's still under 2¢ per image, but three things compound it: images ride in the *history* and get re-billed every turn of the conversation, they eat context-window budget, and at 10K images/day the difference between 1.6K and 4.8K tokens is real money. The lever is **client-side resizing**: downsample to the smallest resolution that preserves what the model needs (reading a screenshot's error text needs far less than reading a dense schematic), and pull the image out of history once it's been discussed.",
+      text: "Do the image-token math out loud when asked — it's a resolution question, not a flat fee. Claude tiles an image into 28×28-pixel patches and bills one visual token per patch (`⌈width/28⌉ × ⌈height/28⌉`), so cost scales directly with pixel count — the table below shows what that looks like at real sizes. At $3/MTok even the expensive end is under 2¢ per image, but three things compound it: images ride in the *history* and get re-billed every turn of the conversation, they eat context-window budget, and at 10K images/day the gap between the cheap and expensive rows is real money. The lever is **client-side resizing**: downsample to the smallest resolution that preserves what the model needs (reading a screenshot's error text needs far less than reading a dense schematic), and pull the image out of history once it's been discussed.",
+    },
+    {
+      type: "table",
+      headers: ["Image size", "Standard-tier tokens", "High-res-tier tokens"],
+      rows: [
+        ["200×200 (thumbnail)", "64", "64"],
+        ["1000×1000 (1 MP)", "1,296", "1,296"],
+        ["1920×1080 (2 MP)", "~1,560 (downscaled cap)", "2,691"],
+        [
+          "Full high-res (~2,576px long edge)",
+          "~1,560 (downscaled cap)",
+          "4,784",
+        ],
+      ],
+    },
+    {
+      type: "heading",
+      text: "PDFs: text and layout together",
     },
     {
       type: "paragraph",
@@ -149,6 +171,10 @@ data = json.loads(resp.output_text)`,
       ],
     },
     {
+      type: "heading",
+      text: "The Files API: upload once, reuse everywhere",
+    },
+    {
       type: "paragraph",
       text: "Inlining base64 is fine for one-shot calls, but an agent that consults the same 200-page handbook every session would resend megabytes per call. The **Files API** fixes that: upload once, get a `file_id`, reference it by id in any later request.",
     },
@@ -172,7 +198,7 @@ resp = client.beta.messages.create(
     }],
 )`,
       explanation:
-        "Rule of thumb: **inline base64** for one-off inputs, **URL** for already-hosted images, **Files API** for anything reused across requests or sessions. The file content still counts as input tokens each call — the Files API saves upload bandwidth and request size, not token cost (prompt caching handles that part).",
+        "The file content still counts as input tokens on every call — the Files API saves upload bandwidth and request size, not token cost (prompt caching handles that part). The table below covers when to reach for each option, on both providers.",
       provider: "claude",
       variants: [
         {
@@ -194,6 +220,27 @@ resp = client.responses.create(
           explanation:
             'OpenAI\'s Files API is GA (no beta header): upload with `purpose="user_data"`, then reference the `file_id` inside an `input_file` block.',
         },
+      ],
+    },
+    {
+      type: "table",
+      headers: ["Method", "Best for", "Notes"],
+      rows: [
+        [
+          "Base64 (inline)",
+          "One-off images/PDFs already in memory",
+          "Simplest option; resent — and re-billed as input tokens — every turn it stays in conversation history",
+        ],
+        [
+          "URL",
+          "Media already hosted (CDN, public URL)",
+          "Provider fetches it directly; base64-only on Amazon Bedrock and Google Cloud",
+        ],
+        [
+          "Files API (`file_id`)",
+          "Anything reused across requests or sessions",
+          'Anthropic: still **beta** (`anthropic-beta: files-api-2025-04-14` header), files persist until deleted, 500 MB/file cap. OpenAI: **GA**, `purpose="user_data"`, 50 MB per file/request. Saves re-upload bandwidth, not token cost — pair with prompt caching for that.',
+        ],
       ],
     },
     {
