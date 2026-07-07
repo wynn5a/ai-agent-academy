@@ -57,6 +57,46 @@ export const lesson02: Lesson = {
         "Low temperature sharpens the distribution toward the top token; high temperature flattens it, letting unlikely tokens through.",
     },
     {
+      type: "paragraph",
+      text: "For most of the industry — every older Claude model, every OpenAI chat model, and essentially every open-weights model you'll self-host — these dials are still live, and you set them as plain fields on the request. This is the API surface you'll meet in the overwhelming majority of existing code and tutorials, so recognize it on sight:",
+    },
+    {
+      type: "code",
+      language: "python",
+      title: "the classic way: sampling parameters as request fields",
+      code: `resp = client.messages.create(
+    model="claude-sonnet-4-5",          # a Claude 4.5-or-earlier model still accepts these
+    max_tokens=1024,                    # hard output cap — a safety rail, not a target
+    temperature=0.2,                    # 0–1 on Anthropic; low = precise, high = varied
+    # top_p=0.9,                        # nucleus sampling — tune this OR temperature, never both
+    # top_k=40,                         # optional: only ever consider the 40 likeliest tokens
+    stop_sequences=["\\n\\nHuman:"],      # end generation at any of these strings
+    messages=[{"role": "user", "content": "Draft a product tagline."}],
+)
+print(resp.content[0].text)`,
+      explanation:
+        "The two knobs from the list, made concrete: `temperature` and `top_p` shape the draw; `top_k` truncates the candidate set to the k likeliest tokens before sampling; `stop_sequences` and `max_tokens` bound *when* generation ends. Pass **temperature or top_p, not both** — on every Claude 4+ model sending both is a 400. This whole surface is what the next section's frontier models take away.",
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `resp = client.chat.completions.create(
+    model="gpt-4o",                     # a non-reasoning chat model still exposes these
+    max_tokens=1024,                    # hard output cap
+    temperature=0.2,                    # 0–2 on OpenAI — a wider range than Anthropic's 0–1
+    # top_p=0.9,                        # best to tune this OR temperature — but both is ACCEPTED here (not a 400)
+    frequency_penalty=0.0,              # -2..2: down-weight a token the more it has appeared
+    presence_penalty=0.0,               # -2..2: down-weight any token that has appeared at all
+    stop=["\\n\\nUser:"],                 # up to 4 stop strings
+    messages=[{"role": "user", "content": "Draft a product tagline."}],
+)
+print(resp.choices[0].message.content)`,
+          explanation:
+            "Same distribution-shaping idea, three differences worth knowing for interviews: OpenAI's `temperature` runs 0–2 (vs Anthropic's 0–1); Chat Completions adds two knobs Anthropic never had — `frequency_penalty` and `presence_penalty`, which discourage repetition rather than reshape the base distribution; and the **`tune one, not both` rule is only a recommendation here, not enforced** — OpenAI and OpenAI-compatible endpoints (DeepSeek, self-hosted vLLM/Ollama, etc.) happily accept `temperature` and `top_p` together with no error, unlike Anthropic's 4+ models which 400. The classic Chat Completions cap is `max_tokens` (newer reasoning models rename it `max_completion_tokens`); read the answer off `resp.choices[0].message.content`.",
+        },
+      ],
+    },
+    {
       type: "callout",
       kind: "tip",
       title: "Settings for agents",
