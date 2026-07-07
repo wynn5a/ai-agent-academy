@@ -12,6 +12,12 @@ export const lesson04: Lesson = {
       text: "The loop from lesson 1 has a dirty secret: it terminates when `stop_reason != \"tool_use\"` — i.e., **whenever the model feels done**. Models sometimes stop early with a half-answer, and sometimes never feel done: re-grepping the same pattern, re-reading the same file, chasing a lead in circles. A model deciding 'one more tool call' 30 times in a row is not a hypothetical; it's a Tuesday. Termination must be **layered**: the model's own signal, plus hard limits the model cannot override.",
     },
     {
+      type: "animation",
+      name: "termination-guards",
+      caption:
+        "Five layered guards, checked in order before every LLM call — the first one to trip ends the loop.",
+    },
+    {
       type: "table",
       headers: [
         "Condition",
@@ -139,7 +145,9 @@ def run(question: str, budget: Budget) -> dict:
                     "complete": True}
 
         if resp.stop_reason != "tool_use":
-            # model stopped talking without calling finish — nudge once
+            # model stopped talking without calling finish — nudge it.
+            # Not a one-shot: if it keeps stalling this fires every turn;
+            # the budget guard above is what actually bounds the retries.
             messages.append({"role": "assistant", "content": resp.content})
             messages.append({"role": "user", "content":
                 "Call the finish tool with your answer and citations."})
@@ -206,7 +214,9 @@ def run(question: str, budget: Budget) -> dict:
                     "complete": True}
 
         if not calls:
-            # model stopped talking without calling finish — nudge once
+            # model stopped talking without calling finish — nudge it.
+            # Not a one-shot: if it keeps stalling this fires every turn;
+            # the budget guard above is what actually bounds the retries.
             input_items += resp.output
             input_items.append({"role": "user", "content":
                 "Call the finish tool with your answer and citations."})

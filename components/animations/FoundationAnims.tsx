@@ -1037,3 +1037,80 @@ export function ReactPatternAnim() {
     </Stage>
   );
 }
+
+const TERMINATION_ROWS = [
+  {
+    tag: "Natural stop",
+    color: "#38bdf8",
+    text: "stop_reason is end_turn — the happy path (model controls it)",
+  },
+  {
+    tag: "Finish tool",
+    color: "#a78bfa",
+    text: "model calls finish(answer, citations) — on your schema",
+  },
+  {
+    tag: "Max iterations",
+    color: "#34d399",
+    text: "loop counter hits N — stops infinite tool spirals",
+  },
+  {
+    tag: "Cost budget",
+    color: "#fbbf24",
+    text: "accumulated $ from usage exceeds the cap",
+  },
+  {
+    tag: "Wall-clock deadline",
+    color: "#f87171",
+    text: "time.monotonic() passes the deadline",
+  },
+];
+export function TerminationGuardsAnim() {
+  return (
+    <Stage viewBox="0 0 640 260">
+      {TERMINATION_ROWS.map((r, i) => (
+        <StepReveal key={i} index={i}>
+          <rect
+            x={40}
+            y={20 + i * 40}
+            width={560}
+            height={32}
+            rx={8}
+            fill={`${r.color}0f`}
+            stroke={r.color}
+            strokeOpacity={0.35}
+          />
+          <text
+            x={56}
+            y={40 + i * 40}
+            fill={r.color}
+            fontSize={11}
+            fontWeight={700}
+            fontFamily="monospace"
+          >
+            {r.tag}
+          </text>
+          <text
+            x={210}
+            y={40 + i * 40}
+            fill="#cbd5e1"
+            fontSize={10.5}
+            fontFamily="monospace"
+          >
+            {r.text}
+          </text>
+        </StepReveal>
+      ))}
+      <text
+        x={320}
+        y={246}
+        textAnchor="middle"
+        fill="#475569"
+        fontSize={10}
+        fontFamily="monospace"
+      >
+        every guard is checked before the next LLM call — first one to trip wins
+      </text>
+    </Stage>
+  );
+}

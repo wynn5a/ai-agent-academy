@@ -95,6 +95,14 @@ const REGISTRY: Record<AnimationName, Entry> = {
     h: 240,
     steps: 5,
   },
+  "termination-guards": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.TerminationGuardsAnim),
+    ),
+    w: 640,
+    h: 260,
+    steps: 5,
+  },
   "rag-pipeline": {
     Component: dynamic(() =>
       import("./KnowledgeAnims").then((m) => m.RagPipelineAnim),

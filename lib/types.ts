@@ -72,6 +72,7 @@ export type AnimationName =
   | "chunking"
   | "memory-types"
   | "react-pattern"
+  | "termination-guards"
   | "multi-agent"
   | "workflow-patterns"
   | "mcp-handshake"
