@@ -124,7 +124,7 @@ def release_notes(diff: str) -> str:
         "Under 150 words, no jargon:\\n\\n" + draft
     )`,
           explanation:
-            "`resp.output_text` aggregates all text output so no block iteration is needed, and `max_tokens` is optional on OpenAI where Anthropic requires it — the gates, the workflow's whole point, are provider-independent Python.",
+            "`resp.output_text` aggregates all text output so no block iteration is needed, and `max_output_tokens` is optional on OpenAI where Anthropic's `max_tokens` is required — the gates, the workflow's whole point, are provider-independent Python.",
         },
       ],
     },

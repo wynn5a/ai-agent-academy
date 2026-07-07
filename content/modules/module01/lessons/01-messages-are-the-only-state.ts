@@ -102,7 +102,7 @@ print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
     "input": [{"role": "user", "content": "My name is Wenming."}]
   }'`,
           explanation:
-            "Auth is a standard `Authorization: Bearer` header (vs Anthropic's `x-api-key` + `anthropic-version`), the system prompt is `instructions`, and `max_tokens` is optional here where Anthropic requires it.",
+            "Auth is a standard `Authorization: Bearer` header (vs Anthropic's `x-api-key` + `anthropic-version`), the system prompt is `instructions`, and `max_output_tokens` is optional here where Anthropic's `max_tokens` is required.",
         },
       ],
     },

@@ -55,7 +55,7 @@ export const lesson01: Lesson = {
     {
       type: "code",
       language: "python",
-      title: "a complete agent in ~40 lines (raw Anthropic SDK)",
+      title: "a complete agent in ~55 lines (raw Anthropic SDK)",
       code: `import anthropic
 
 client = anthropic.Anthropic()
@@ -177,7 +177,7 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
             })
     raise RuntimeError("max iterations exceeded")   # we'll fix this in lesson 4`,
           explanation:
-            'Same loop, inverted termination signal: Anthropic says done via `stop_reason != "tool_use"`, while the Responses API says done by returning **no `function_call` items** in `resp.output`. Other mechanical differences: tool schemas use `parameters` (not `input_schema`), arguments arrive as a JSON string you must `json.loads`, results go back as `function_call_output` input items (after echoing the call), and `max_tokens` is optional where Anthropic requires it.',
+            'Same loop, inverted termination signal: Anthropic says done via `stop_reason != "tool_use"`, while the Responses API says done by returning **no `function_call` items** in `resp.output`. Other mechanical differences: tool schemas use `parameters` (not `input_schema`), arguments arrive as a JSON string you must `json.loads`, results go back as `function_call_output` input items (after echoing the call), and `max_output_tokens` is optional where Anthropic\'s `max_tokens` is required.',
         },
       ],
     },
