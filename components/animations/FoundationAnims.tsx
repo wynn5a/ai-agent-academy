@@ -1114,3 +1114,70 @@ export function TerminationGuardsAnim() {
     </Stage>
   );
 }
+
+const FAILURE_DEFENSE_ROWS = [
+  {
+    tag: "Defense 1 — specific errors",
+    color: "#38bdf8",
+    text: '"docs/setup.md not found. Sibling files: setup-guide.md, install.md"',
+  },
+  {
+    tag: "Defense 2 — per-tool budget",
+    color: "#fbbf24",
+    text: "3rd failure on this tool → disabled for the rest of the run",
+  },
+  {
+    tag: "Defense 3 — repeat detection",
+    color: "#f87171",
+    text: "exact (tool, args) repeat of a failed call → short-circuit, no execution",
+  },
+];
+export function FailureDefensesAnim() {
+  return (
+    <Stage viewBox="0 0 640 200">
+      {FAILURE_DEFENSE_ROWS.map((r, i) => (
+        <StepReveal key={i} index={i}>
+          <rect
+            x={40}
+            y={20 + i * 54}
+            width={560}
+            height={40}
+            rx={8}
+            fill={`${r.color}0f`}
+            stroke={r.color}
+            strokeOpacity={0.35}
+          />
+          <text
+            x={56}
+            y={38 + i * 54}
+            fill={r.color}
+            fontSize={11}
+            fontWeight={700}
+            fontFamily="monospace"
+          >
+            {r.tag}
+          </text>
+          <text
+            x={56}
+            y={52 + i * 54}
+            fill="#cbd5e1"
+            fontSize={10}
+            fontFamily="monospace"
+          >
+            {r.text}
+          </text>
+        </StepReveal>
+      ))}
+      <text
+        x={320}
+        y={190}
+        textAnchor="middle"
+        fill="#475569"
+        fontSize={10}
+        fontFamily="monospace"
+      >
+        escalating pressure — each defense assumes the last one wasn&apos;t enough
+      </text>
+    </Stage>
+  );
+}

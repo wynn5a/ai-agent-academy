@@ -20,6 +20,12 @@ export const lesson05: Lesson = {
       ],
     },
     {
+      type: "animation",
+      name: "failure-defenses",
+      caption:
+        "Each defense assumes the one before it wasn't enough — specific errors, then a per-tool budget, then repeat detection.",
+    },
+    {
       type: "code",
       language: "python",
       title:
@@ -242,7 +248,7 @@ tracer.log("terminate", reason="finish tool called", complete=True,
     },
     {
       type: "paragraph",
-      text: "The trace log's second life is the one seniors bring up unprompted: **every interesting failure becomes a test case**. A run where the agent spiraled, hallucinated on empty results, or blew its budget gets its *initial input* checked into a regression suite; after any prompt, tool, or model change, replay those inputs and compare outcomes (did it finish? within budget? citing real files?). That's the embryo of the eval harness Module 5 builds properly — and it's how prompt changes stop being vibes-driven. Two production notes to mention: real deployments usually emit this same data as **spans** through their observability stack (the GenAI conventions in OpenTelemetry, or purpose-built tools like LangSmith/Langfuse) rather than a local file — the *fields* are what matter, not the sink; and traces contain user data and tool outputs, so retention and PII policy apply to them like any other log.",
+      text: "The trace log's second life is the one seniors bring up unprompted: **every interesting failure becomes a test case**. A run where the agent spiraled, hallucinated on empty results, or blew its budget gets its *initial input* checked into a regression suite; after any prompt, tool, or model change, replay those inputs and compare outcomes (did it finish? within budget? citing real files?). That's the embryo of the eval harness Module 7 builds properly — and it's how prompt changes stop being vibes-driven. Two production notes to mention: real deployments usually emit this same data as **spans** through their observability stack (the GenAI conventions in OpenTelemetry, or purpose-built tools like LangSmith/Langfuse) rather than a local file — the *fields* are what matter, not the sink; and traces contain user data and tool outputs, so retention and PII policy apply to them like any other log.",
     },
     {
       type: "callout",
@@ -268,7 +274,7 @@ tracer.log("terminate", reason="finish tool called", complete=True,
       prompt:
         '**Drill:** "Your agent works. Now make changing it safe." — the interviewer wants your path from trace logs to a regression/eval loop.',
       answer:
-        "Four moves. (1) **Curate**: mine traces for ~30–50 representative inputs — the common paths, every postmortem'd failure, and the weird tail (budget kills, multi-replan runs). Store input + frozen tool environment (stub the tools with recorded results where determinism matters). (2) **Define checkable outcomes** per case — not 'answer is good' but `complete == true`, `iterations <= 12`, `citations ⊆ files actually read`, `answer mentions X` — assertions a script can run. (3) **Gate changes**: every prompt/tool/model edit runs the suite; diffs in pass-rate, cost, and iteration count are reviewed like test failures. This catches the classic regression — a prompt tweak that fixes one case and silently doubles average iterations. (4) **Close the loop**: production keeps generating traces; failures graduate into the suite; the suite becomes the spec of what the agent must keep doing. Name the limitation honestly: replayed tool stubs drift from reality, so re-record environments periodically and keep a small live-fire subset. That maturity ladder — logs → fixtures → gated evals → continuous curation — is precisely what Module 5 industrializes. **Follow-up probe:** \"how do you eval non-deterministic outputs?\" → assertion-based checks where possible, LLM-judge with concrete rubrics where not, and n-run pass@k for flaky behaviors.",
+        "Four moves. (1) **Curate**: mine traces for ~30–50 representative inputs — the common paths, every postmortem'd failure, and the weird tail (budget kills, multi-replan runs). Store input + frozen tool environment (stub the tools with recorded results where determinism matters). (2) **Define checkable outcomes** per case — not 'answer is good' but `complete == true`, `iterations <= 12`, `citations ⊆ files actually read`, `answer mentions X` — assertions a script can run. (3) **Gate changes**: every prompt/tool/model edit runs the suite; diffs in pass-rate, cost, and iteration count are reviewed like test failures. This catches the classic regression — a prompt tweak that fixes one case and silently doubles average iterations. (4) **Close the loop**: production keeps generating traces; failures graduate into the suite; the suite becomes the spec of what the agent must keep doing. Name the limitation honestly: replayed tool stubs drift from reality, so re-record environments periodically and keep a small live-fire subset. That maturity ladder — logs → fixtures → gated evals → continuous curation — is precisely what Module 7 industrializes. **Follow-up probe:** \"how do you eval non-deterministic outputs?\" → assertion-based checks where possible, LLM-judge with concrete rubrics where not, and n-run pass@k for flaky behaviors.",
     },
     {
       type: "keypoints",
@@ -279,7 +285,7 @@ tracer.log("terminate", reason="finish tool called", complete=True,
         "Compaction fights caching — rewriting history invalidates the prefix. Compact rarely, in batches, on a threshold; watch cache_read_input_tokens to verify.",
         "Truncation notes are affordances — tell the model how to get more, and it will.",
         "Trace every LLM call, tool call, and termination to JSONL with tokens, cost, latency, and reason. If it's not in the trace, it didn't happen.",
-        "Traces are assets: failures become regression fixtures, fixtures become the eval suite that makes prompt changes safe (Module 5 industrializes this).",
+        "Traces are assets: failures become regression fixtures, fixtures become the eval suite that makes prompt changes safe (Module 7 industrializes this).",
       ],
     },
   ],

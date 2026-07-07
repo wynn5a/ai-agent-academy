@@ -103,6 +103,14 @@ const REGISTRY: Record<AnimationName, Entry> = {
     h: 260,
     steps: 5,
   },
+  "failure-defenses": {
+    Component: dynamic(() =>
+      import("./FoundationAnims").then((m) => m.FailureDefensesAnim),
+    ),
+    w: 640,
+    h: 200,
+    steps: 3,
+  },
   "rag-pipeline": {
     Component: dynamic(() =>
       import("./KnowledgeAnims").then((m) => m.RagPipelineAnim),

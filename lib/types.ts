@@ -73,6 +73,7 @@ export type AnimationName =
   | "memory-types"
   | "react-pattern"
   | "termination-guards"
+  | "failure-defenses"
   | "multi-agent"
   | "workflow-patterns"
   | "mcp-handshake"
