@@ -54,6 +54,44 @@ def react_step(messages) -> tuple[str, str]:
     return match.group(1), match.group(2)   # e.g. ("search", "agent loops")`,
       explanation:
         'Two load-bearing tricks: `stop_sequences=["Observation:"]` cuts the model off before it invents its own observation (early ReAct implementations lived and died by this), and the regex extracts the action from free text — which is exactly the fragile parsing that native tool calling replaced with schema-validated JSON. You should be able to explain this history in an interview, but never build on regex parsing in 2026.',
+      provider: "claude",
+      variants: [
+        {
+          provider: "openai",
+          code: `import re
+
+REACT_PROMPT = """Answer the question by interleaving Thought, Action, and
+Observation steps.
+
+Available actions:
+  search[query]   - search the knowledge base
+  lookup[title]   - read a full article
+  finish[answer]  - give the final answer
+
+Respond with exactly one Thought and one Action, then STOP:
+Thought: <reasoning about what to do next>
+Action: <one action>
+
+I will run the action and reply with:
+Observation: <result>
+
+Question: {question}"""
+
+def react_step(messages) -> tuple[str, str]:
+    resp = client.chat.completions.create(
+        model=MODEL, max_tokens=512,
+        stop=["Observation:"],   # forbid hallucinating results
+        messages=messages,
+    )
+    text = resp.choices[0].message.content
+    match = re.search(r"Action: *(\\w+)\\[(.*)\\]", text)
+    if match is None:
+        raise ValueError("model broke the ReAct format:\\n" + text)
+    return match.group(1), match.group(2)   # e.g. ("search", "agent loops")`,
+          explanation:
+            "Same trick, `stop` instead of `stop_sequences` — Chat Completions caps this at 4 strings, plenty for one keyword. The rest of the fragility is identical: `resp.choices[0].message.content` is still free text you regex-parse, which is the whole reason this approach didn't survive contact with typed tool calling.",
+        },
+      ],
     },
     {
       type: "exercise",
