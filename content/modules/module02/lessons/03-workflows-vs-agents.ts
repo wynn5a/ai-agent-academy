@@ -217,13 +217,13 @@ def handle(request: str) -> str:
     },
     {
       type: "paragraph",
-      text: "**Orchestrator-workers** sits at the boundary of the taxonomy: the orchestrator LLM decides the decomposition at runtime (agent-like), but workers run fixed, bounded subtasks (workflow-like). It's the pattern behind most 'multi-agent' systems you'll meet, and Module 7 builds one. **Evaluator-optimizer** closes a generate → critique → revise loop; it shines when you can state the bar (\"all tests pass and the critique finds no severity-1 issues\") and cap the rounds (2–3 is typical — returns diminish fast).",
+      text: "**Orchestrator-workers** sits at the boundary of the taxonomy: the orchestrator LLM decides the decomposition at runtime (agent-like), but workers run fixed, bounded subtasks (workflow-like). It's the pattern behind most 'multi-agent' systems you'll meet, and Module 5 builds one. **Evaluator-optimizer** closes a generate → critique → revise loop; it shines when you can state the bar (\"all tests pass and the critique finds no severity-1 issues\") and cap the rounds (2–3 is typical — returns diminish fast).",
     },
     {
       type: "callout",
       kind: "warning",
       title: "Evaluator-optimizer's trap: reward hacking the judge",
-      text: 'When a generator is optimized against an LLM judge, it learns to please **the judge**, not the goal: padding answers with confident hedges, mirroring the rubric\'s phrasing, self-praising ("this thoroughly addresses..."). Defenses: give the evaluator concrete, checkable criteria instead of "rate quality 1–10"; mix in deterministic checks (tests, linters, length caps) the generator can\'t sweet-talk; hold out a different judge for final acceptance; and audit transcripts where the judge\'s score jumped between rounds. This is the same failure family as RL reward hacking — Module 8 returns to it.',
+      text: 'When a generator is optimized against an LLM judge, it learns to please **the judge**, not the goal: padding answers with confident hedges, mirroring the rubric\'s phrasing, self-praising ("this thoroughly addresses..."). Defenses: give the evaluator concrete, checkable criteria instead of "rate quality 1–10"; mix in deterministic checks (tests, linters, length caps) the generator can\'t sweet-talk; hold out a different judge for final acceptance; and audit transcripts where the judge\'s score jumped between rounds. This is the same failure family as RL reward hacking — Module 8 revisits it under the name \'test-gaming\' when the thing being optimized against is a test suite instead of a judge.',
     },
     {
       type: "exercise",
