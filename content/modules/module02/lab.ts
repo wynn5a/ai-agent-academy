@@ -66,7 +66,7 @@ def answer(question: str, root: str) -> dict:
 
         resp = timed_llm_call(messages, tracer, budget)   # logs usage+latency
         # TODO: finish-tool check -> validate citations -> return complete
-        # TODO: end_turn without finish -> nudge once
+        # TODO: end_turn without finish -> nudge (repeats until budget trips)
         # TODO: execute tools via executor, truncate(), trace, append`,
       explanation:
         "Assemble, don't invent: `Budget`, `SafeExecutor`, `truncate`, and `Tracer` come straight from lessons 4–5. Decisions that matter: all three tools clamp their own output (never trust the loop to remember); `read_file` takes `offset`/`limit` so truncation notes are actionable; path arguments are resolved and checked against `--root` (the model must not read your home directory); and validate `finish` citations against the set of files actually read this run — reject and nudge if the model cites something it never opened.",

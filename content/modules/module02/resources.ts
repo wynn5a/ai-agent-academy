@@ -10,7 +10,7 @@ export const resources02: Resource[] = [
   },
   {
     title: "OpenAI — A Practical Guide to Building Agents",
-    url: "https://platform.openai.com/docs/guides/agents",
+    url: "https://developers.openai.com/api/docs/guides/agents",
     description: "Complementary vendor view: guardrails, orchestration, HITL.",
     kind: "guide",
   },
