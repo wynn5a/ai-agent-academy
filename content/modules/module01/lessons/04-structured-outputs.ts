@@ -190,7 +190,9 @@ data = json.loads(call.arguments)
     {
       type: "code",
       language: "python",
-      title: "validate with Pydantic, repair with a feedback retry",
+      provider: "neutral",
+      title:
+        "validate with Pydantic, repair with a feedback retry — provider-agnostic",
       code: `from pydantic import BaseModel, ValidationError, conint
 
 class Ticket(BaseModel):
@@ -211,7 +213,7 @@ def extract(text: str, max_retries: int = 2) -> Ticket:
                       f"Return corrected JSON only.")
     raise RuntimeError("extraction failed after retries")`,
       explanation:
-        "Order of mitigations for malformed output: (1) validate and **retry with the error message included** — cheapest fix, works most of the time; (2) tighten the schema/prompt (enums, `strict` mode, lower temperature); (3) fall back to a stronger model or a deterministic parser. Never silently `json.loads` and hope.",
+        "**Works the same on both providers** — `call_model` stands in for either SDK's call (Anthropic's `messages.create` or OpenAI's `responses.create`); the validate-and-repair loop around it is identical, which is why there are no provider tabs here. Order of mitigations for malformed output: (1) validate and **retry with the error message included** — cheapest fix, works most of the time; (2) tighten the schema/prompt (enums, `strict` mode, lower temperature); (3) fall back to a stronger model or a deterministic parser. Never silently `json.loads` and hope.",
     },
     {
       type: "callout",
