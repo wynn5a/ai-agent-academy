@@ -84,8 +84,9 @@ const REGISTRY: Record<AnimationName, Entry> = {
       import("./FoundationAnims").then((m) => m.ToolCallingAnim),
     ),
     w: 640,
-    h: 230,
+    h: 240,
     steps: 4,
+    stepMs: 1000,
   },
   "react-pattern": {
     Component: dynamic(() =>

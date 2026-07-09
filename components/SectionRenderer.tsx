@@ -241,6 +241,7 @@ export default function SectionRenderer({ sections }: { sections: Section[] }) {
                 code={s.code}
                 language={s.language}
                 answer={s.answer}
+                provider={s.provider}
               />
             );
           default:

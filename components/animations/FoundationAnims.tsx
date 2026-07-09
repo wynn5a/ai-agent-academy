@@ -484,10 +484,10 @@ const SM_MASKED = SM_CANDIDATES.map((t) => (t.valid ? t.logit : -Infinity));
 const SM_PROBS = softmax(SM_MASKED);
 const SM_WINNER = SM_PROBS.indexOf(Math.max(...SM_PROBS));
 const SM_CAPTIONS = [
-  "the schema compiled to a grammar; every candidate token still gets a raw logit, same as any other decoding step",
-  'tokens that would break the grammar — not the start of any enum value — get masked to −∞ before sampling, regardless of their raw score ("5" scored higher than two valid options)',
-  "softmax renormalizes over what's left: masked tokens get exactly 0% probability, no matter how high their logit was",
-  'the sampler draws from the survivors only — the model cannot physically emit "5" here, even though its raw logit outranked two valid options',
+  "every candidate token still gets a raw logit, same as always",
+  'grammar-invalid tokens get masked to −∞ — even high-scoring "5"',
+  "softmax renormalizes over survivors; masked tokens get exactly 0%",
+  'the sampler draws only from survivors — "5" cannot be emitted',
 ];
 
 export function SchemaMaskingAnim() {
@@ -626,7 +626,7 @@ export function SchemaMaskingAnim() {
           >
             {'{"category": '}
             <tspan fill="#34d399">{SM_CANDIDATES[SM_WINNER].text}</tspan>
-            {"} — structurally valid; severity/summary follow the same way"}
+            {"} — valid; severity & summary follow suit"}
           </text>
         </StepFade>
       )}
@@ -897,25 +897,25 @@ export function ContextWindowAnim() {
 
 /* ---------- 6. Tool calling handshake ---------- */
 const TC_STEPS = [
-  { from: "app", text: "messages + tool schemas", y: 66 },
+  { from: "app", text: "messages + tool schemas", y: 92 },
   {
     from: "llm",
     text: 'stop_reason: "tool_use" → get_weather({city:"Tokyo"})',
-    y: 106,
+    y: 132,
   },
-  { from: "app", text: 'tool_result: {"temp": 21, "sky": "clear"}', y: 146 },
-  { from: "llm", text: '"It\'s 21°C and clear in Tokyo."', y: 186 },
+  { from: "app", text: 'tool_result: {"temp": 21, "sky": "clear"}', y: 172 },
+  { from: "llm", text: '"It\'s 21°C and clear in Tokyo."', y: 212 },
 ];
 export function ToolCallingAnim() {
   return (
-    <Stage viewBox="0 0 640 230">
+    <Stage viewBox="0 0 640 240">
       <Node x={30} y={20} w={120} h={44} label="Your app" color="#38bdf8" />
       <Node x={490} y={20} w={120} h={44} label="LLM API" color="#a78bfa" />
       <line
         x1={90}
         y1={64}
         x2={90}
-        y2={215}
+        y2={226}
         stroke="#232f47"
         strokeWidth={1.5}
       />
@@ -923,7 +923,7 @@ export function ToolCallingAnim() {
         x1={550}
         y1={64}
         x2={550}
-        y2={215}
+        y2={226}
         stroke="#232f47"
         strokeWidth={1.5}
       />

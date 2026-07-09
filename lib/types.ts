@@ -57,6 +57,9 @@ export type Section =
       code?: string; // optional code the question refers to
       language?: string; // language for the code block (default "python")
       answer: string; // markdown-lite, revealed on click
+      /** Tags the exercise's code with the SDK dialect it targets (renders a
+       *  badge next to the kind). Omit when the code is provider-neutral. */
+      provider?: Exclude<Provider, "neutral">;
     };
 
 export type AnimationName =

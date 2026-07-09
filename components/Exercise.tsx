@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { renderInline } from "@/lib/markdown";
+import { PROVIDER_META, type ProviderPref } from "@/lib/provider";
 import CodeBlock from "./CodeBlock";
 
 type ExerciseKind = "predict" | "spot-the-bug" | "concept";
@@ -143,15 +144,18 @@ export default function Exercise({
   code,
   language,
   answer,
+  provider,
 }: {
   kind: ExerciseKind;
   prompt: string;
   code?: string;
   language?: string;
   answer: string;
+  provider?: ProviderPref;
 }) {
   const [revealed, setRevealed] = useState(false);
   const st = KIND_STYLES[kind];
+  const pm = provider ? PROVIDER_META[provider] : null;
   const answerParts = answer
     .split(" | ")
     .map((p) => p.trim())
@@ -165,6 +169,12 @@ export default function Exercise({
         >
           {st.label}
         </span>
+        {pm && (
+          <span className="border-border inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-slate-400">
+            <span className={`h-1.5 w-1.5 rounded-full ${pm.dot}`} />
+            {pm.label} SDK
+          </span>
+        )}
       </div>
       <div className="text-[0.95rem] leading-relaxed text-slate-200">
         {renderInline(prompt)}

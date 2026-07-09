@@ -183,25 +183,58 @@ print(chat("What's my name?"))   # works ONLY because we resent turn 1`,
       type: "code",
       language: "python",
       title: "count before you send",
-      code: `# Anthropic: exact count via the API (free, no generation)
+      provider: "claude",
+      code: `# Exact pre-send count — free, no generation. Pass the SAME system,
+# messages, and tools you'll actually send, or the count will be low.
 count = client.messages.count_tokens(
     model="claude-sonnet-5",
     system="You are a concise engineering assistant.",
     messages=messages,
+    # tools=tools,   # tool schemas are input tokens too — include them
 )
-print(count.input_tokens)
+if count.input_tokens > 150_000:        # gate before spending on a big call
+    messages = compact(messages)        # trim/summarize (Module 4)
 
-# OpenAI: tiktoken locally (approximate — encodings lag the newest models)
-import tiktoken
-enc = tiktoken.get_encoding("o200k_base")
-n = len(enc.encode("How many tokens is this sentence?"))
-
-# Every response also reports usage — log it on EVERY call:
-resp = client.messages.create(model="claude-sonnet-5",
-                              max_tokens=256, messages=messages)
-print(resp.usage.input_tokens, resp.usage.output_tokens)`,
+# Then log real usage on EVERY response — you can't manage what you can't see.
+resp = client.messages.create(
+    model="claude-sonnet-5", max_tokens=256, messages=messages,
+)
+u = resp.usage
+log.info("tokens in=%d out=%d cache_read=%d cache_write=%d",
+         u.input_tokens, u.output_tokens,
+         u.cache_read_input_tokens, u.cache_creation_input_tokens)`,
       explanation:
-        "Production agents log `usage` on every call and aggregate per session/user/day. You cannot manage what you don't measure — cost bugs (like accidentally resending a huge document every turn) hide in unlogged usage.",
+        "Anthropic gives you an **exact** pre-send count for free via `count_tokens` — feed it the same `system`, `messages`, and `tools` you're about to send. Then log `usage` on every call (note the separate `cache_read`/`cache_write` fields — you'll tune those in Lesson 5) and aggregate per session/user/day. Cost bugs like resending a huge document every turn hide in unlogged usage.",
+      variants: [
+        {
+          provider: "openai",
+          language: "python",
+          code: `# No count endpoint — estimate locally with tiktoken. Treat it as
+# APPROXIMATE: encodings lag new models and per-message overhead varies.
+import tiktoken
+
+def count_tokens(messages, model="gpt-4.1") -> int:
+    try:
+        enc = tiktoken.encoding_for_model(model)
+    except KeyError:
+        enc = tiktoken.get_encoding("o200k_base")  # current default encoding
+    # Each message carries framing overhead — don't just encode one string.
+    n = sum(4 + len(enc.encode(m["content"])) for m in messages)
+    return n + 2                        # priming tokens for the reply
+
+if count_tokens(messages) > 100_000:    # gate before spending on a big call
+    messages = compact(messages)        # trim/summarize (Module 4)
+
+# The response usage block is the AUTHORITATIVE count — log it every call.
+resp = client.chat.completions.create(
+    model="gpt-4.1", max_tokens=256, messages=messages,
+)
+u = resp.usage
+log.info("tokens in=%d out=%d", u.prompt_tokens, u.completion_tokens)`,
+          explanation:
+            "OpenAI has no count endpoint, so `tiktoken` is your only pre-send estimate — and it's only an estimate: encodings trail the newest models and the per-message framing overhead is version-specific, so leave headroom. The `usage` block on the response (`prompt_tokens`/`completion_tokens`) is the one authoritative number — log it on every call.",
+        },
+      ],
     },
     {
       type: "exercise",
@@ -229,7 +262,7 @@ def chat(user_text: str) -> str:
     messages.append({"role": "assistant", "content": reply})
     return reply`,
       answer:
-        "**Bug 1 (the 400):** `messages[-10:]` slices at an arbitrary index. Whenever the slice happens to start on an *assistant* message, the history begins with the wrong role and the API rejects it — conversations must start with a `user` turn. **Bug 2 (the quality loss):** blind truncation silently drops the earliest context — including the message where the user stated their name, goal, or constraints — so the model degrades with no error at all. The senior fix: trim at **turn boundaries** (always start on a `user` message), keep any standing context in the `system` prompt (which rides outside the array), and prefer *summarizing* dropped turns over deleting them. In Lesson 3 a third rule appears: never split a tool_use/tool_result pair.",
+        "**Bug 1 (the 400)**: `messages[-10:]` slices at an arbitrary index. Whenever the slice happens to start on an *assistant* message, the history begins with the wrong role and the API rejects it — conversations must start with a `user` turn. **Bug 2 (the quality loss)**: blind truncation silently drops the earliest context — including the message where the user stated their name, goal, or constraints — so the model degrades with no error at all. | **The senior fix:** trim at **turn boundaries** (always start on a `user` message), keep any standing context in the `system` prompt (which rides outside the array), and prefer *summarizing* dropped turns over deleting them. In Lesson 3 a third rule appears: never split a `tool_use`/`tool_result` pair.",
     },
     {
       type: "callout",

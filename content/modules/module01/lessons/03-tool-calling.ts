@@ -373,6 +373,7 @@ def run_turn(input_items: list) -> str:
     {
       type: "exercise",
       kind: "spot-the-bug",
+      provider: "claude",
       prompt:
         "This handles the tool turn. It works in every test — until the model starts making parallel calls in production, and then requests fail with a 400. Why?",
       code: `if resp.stop_reason == "tool_use":
@@ -385,11 +386,12 @@ def run_turn(input_items: list) -> str:
         "content": output,
     }]})`,
       answer:
-        "`next(...)` grabs **only the first** `tool_use` block. When the model requests two tools in one turn, the second request goes unanswered — and the API rejects the follow-up because every `tool_use` in the assistant turn must have a matching `tool_result`. Tests passed because simple prompts never triggered parallel calls. Fix: iterate over **all** `tool_use` blocks and return all results in one user message. This bug is common enough that interviewers plant it deliberately.",
+        "`next(...)` returns **only the first** `tool_use` block. So when the model asks for two tools in one turn, the second goes unanswered — and the next API call fails outright, because every `tool_use` in an assistant turn must be paired with a matching `tool_result`. The tests stayed green only because simple prompts never triggered parallel calls; the bug hides until real traffic hits it. | **The fix:** loop over *every* `tool_use` block and return all the results together in one user message. Interviewers plant this one on purpose — catching it signals you've actually run an agent loop in production, not just wired one up.",
     },
     {
       type: "exercise",
       kind: "spot-the-bug",
+      provider: "claude",
       prompt:
         "This loop handles a tool-use turn. It runs once, then the second API call fails with a 400. What's wrong?",
       code: `while True:
