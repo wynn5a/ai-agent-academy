@@ -85,7 +85,12 @@ const LIST_STYLES = [
   },
 ];
 
-type ParsedList = { intro: string; items: string[] };
+type ParsedList = { intro: string; items: string[]; labels: string[] };
+
+/** Ordinal of a marker capture: "3" → 3, "c" → 3 (both 1-based). */
+function markerOrdinal(mark: string): number {
+  return /^[0-9]$/.test(mark) ? Number(mark) : mark.toLowerCase().charCodeAt(0) - 96;
+}
 
 /** Split a part on its first probe prefix → body + (probe string | null). */
 function splitBodyAndProbe(part: string): { body: string; probePart: string | null } {
@@ -102,16 +107,42 @@ function parseItemList(text: string): ParsedList | null {
     if (!startsWithMarker && !hasBoundary) continue;
     const chunks = text.split(s.splitRe).map((c) => c.trim()).filter(Boolean);
     let intro = "";
-    let items: string[];
+    let markerChunks: string[];
     // a leading chunk with no marker is a lead-in (e.g. "Three inputs: (a)… (b)…")
     if (chunks.length && !s.markerRe.test(chunks[0])) {
       intro = chunks[0];
-      items = chunks.slice(1);
+      markerChunks = chunks.slice(1);
     } else {
-      items = chunks;
+      markerChunks = chunks;
+    }
+    // Coalesce false boundaries: a marker that isn't the next in sequence is an
+    // inline back-reference (e.g. "…reference by file_id. But (c) still bills…"
+    // inside item (c)), not a new item — merge it into the current item.
+    const items: string[] = [];
+    let expected = -1;
+    for (const chunk of markerChunks) {
+      const m = chunk.match(s.markerRe);
+      const ord = m ? markerOrdinal(m[1]) : -1;
+      if (items.length && ord !== expected + 1) {
+        items[items.length - 1] += " " + chunk;
+      } else {
+        items.push(chunk);
+        expected = ord;
+      }
     }
     if (items.length < 2) continue; // a single item isn't a list
-    return { intro, items: items.map((it) => it.replace(s.markerRe, "").trim()) };
+    // Keep each item's source marker as its label ("a"→"A", "3"→"3") so a
+    // lettered answer renders A/B/C — matching the (a)/(b)/(c) prompt — instead
+    // of being renumbered 1/2/3.
+    const labels = items.map((it) => {
+      const m = it.match(s.markerRe);
+      return m && /^[a-z]$/.test(m[1]) ? m[1].toUpperCase() : (m?.[1] ?? "");
+    });
+    return {
+      intro,
+      items: items.map((it) => it.replace(s.markerRe, "").trim()),
+      labels,
+    };
   }
   return null;
 }
@@ -135,7 +166,7 @@ function parseLabeledList(text: string): ParsedList | null {
     const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
     items.push(text.slice(start, end).trim());
   }
-  return { intro, items };
+  return { intro, items, labels: [] }; // rendered as bullets; labels unused
 }
 
 export default function Exercise({
@@ -232,7 +263,7 @@ export default function Exercise({
                                 className="flex gap-3 text-[0.95rem] leading-relaxed text-slate-200"
                               >
                                 <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-emerald-500/15 text-[0.7rem] font-bold text-emerald-300">
-                                  {n + 1}
+                                  {list.labels[n] || n + 1}
                                 </span>
                                 <span className="[&_strong]:text-slate-50">
                                   {renderInline(item)}
