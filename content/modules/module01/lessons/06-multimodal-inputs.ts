@@ -85,6 +85,49 @@ resp = client.responses.create(
       ],
     },
     {
+      type: "paragraph",
+      text: "OpenAI counts image tokens two different ways, and knowing which family a model is in is the whole trick:",
+    },
+    {
+      type: "paragraph",
+      text: "**Patch-based** — the **32×32-pixel** patch method, now in two tiers. The **efficiency models** (`gpt-5-mini`/`-nano`, `gpt-5.4-mini`/`-nano`, `gpt-4.1-mini`/`-nano`, `o4-mini`) count `⌈w/32⌉ × ⌈h/32⌉` patches, cap at **1,536** (proportional downscale when over), then multiply by a per-model factor — **1.62×** mini · **2.46×** nano · **1.72×** `o4-mini`. The **newest flagships** (`gpt-5.4`, `gpt-5.5`, `gpt-5.6`) use the same patches but a far larger, `detail`-controlled budget: `high` allows up to **2,500** patches (2048px max side), `original` up to **10,000** (6000px, no forced resize) — and on 5.5 / 5.6 the default *is* `original`. The fixed 1.62 / 2.46 multipliers are a mini/nano thing; flagship image tokens track the resized patch count under whichever cap `detail` selects.",
+    },
+    {
+      type: "paragraph",
+      text: "**Tile-based** — the base `gpt-5`, `gpt-4o`, `gpt-4.1`, and the o1/o3 line (note the split: base `gpt-5` is tile-based, but the `gpt-5.4`+ flagships above moved to patches). Shrink the image to fit a **2048×2048** box, scale the shortest side to **768px**, count **512×512** tiles, then bill `base + tiles × per-tile`. The lever this family hands you that Claude doesn't: `detail: low` pays only the flat base and skips tiles entirely — one cheap fixed cost per image when you don't need fine detail.",
+    },
+    {
+      type: "table",
+      headers: ["OpenAI model", "Method", "Image tokens"],
+      rows: [
+        [
+          "gpt-5-mini / -nano, gpt-5.4-mini / -nano, gpt-4.1-mini / -nano, o4-mini",
+          "Patch-based (efficiency)",
+          "⌈w/32⌉×⌈h/32⌉ patches (max 1,536) × factor — 1.62 mini · 2.46 nano · 1.72 o4-mini",
+        ],
+        [
+          "gpt-5.4, gpt-5.5, gpt-5.6 (flagship)",
+          "Patch-based (large budget)",
+          "same 32×32 patches, detail-capped — high: ≤2,500 (2048px) · original: ≤10,000 (6000px, no resize; default on 5.5–5.6)",
+        ],
+        [
+          "gpt-5 (base)",
+          "Tile-based",
+          "detail high: 70 base + 140 / 512px tile · detail low: 70 flat",
+        ],
+        [
+          "gpt-4o, gpt-4.1",
+          "Tile-based",
+          "detail high: 85 base + 170 / 512px tile · detail low: 85 flat",
+        ],
+        [
+          "gpt-4o-mini",
+          "Tile-based",
+          "detail high: 2,833 base + 5,667 / tile — inflated on purpose so an image costs ≈ gpt-4o despite mini's cheaper text rate",
+        ],
+      ],
+    },
+    {
       type: "heading",
       text: "PDFs: text and layout together",
     },
@@ -282,6 +325,7 @@ resp = client.responses.create(
       points: [
         "`content` is a list of typed blocks — images and PDFs are just more block types in the same stateless array.",
         "Media blocks go before the text that references them; images cost resolution-dependent input tokens (~1.6K typical, ~4.8K at full high-res) — resize client-side, and remember they're re-billed every turn they stay in history.",
+        "OpenAI counts image tokens two ways: **patch-based** 32×32 patches (mini/nano/o4-mini cap at 1,536 ×factor; the newest `gpt-5.4`/`5.5`/`5.6` flagships use a bigger `detail`-capped budget of 2,500 / 10,000 patches) vs **tile-based** (base `gpt-5`, `gpt-4o`, `gpt-4.1` — base + 512px tiles, `detail: low` = flat rate).",
         "Concrete limits: ~32 MB per request, ~600 PDF pages on large-context models (~100 on smaller) — split or downsample past them.",
         "`document` blocks + structured outputs = schema-guaranteed extraction, the core document-automation pattern.",
         "Base64 for one-offs, URL for hosted media, Files API (`file_id`) for anything reused — plus caching for repeated token cost.",
