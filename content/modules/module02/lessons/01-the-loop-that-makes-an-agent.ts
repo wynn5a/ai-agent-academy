@@ -55,11 +55,51 @@ export const lesson01: Lesson = {
     {
       type: "code",
       language: "python",
-      title: "a complete agent in ~55 lines (raw Anthropic SDK)",
-      code: `import anthropic
+      title: "a complete, runnable agent — paste straight into Colab",
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
 
 client = anthropic.Anthropic()
 MODEL = "claude-sonnet-5"
+
+# A tiny in-memory "notes database" so the tools do real work — no setup,
+# no files. Swap this for a real store later; the loop below never changes.
+NOTES = {
+    "n042": {"title": "Exponential backoff for retries",
+             "body": "On 429/5xx, retry with backoff: wait 2**attempt seconds + "
+                     "jitter, cap at 60s, give up after 5 tries. Jitter stops "
+                     "retries from synchronizing. Never retry 4xx except 429."},
+    "n107": {"title": "Caching layer design",
+             "body": "Read-through cache, 5-min TTL, key on the normalized query. "
+                     "Invalidate on write. Beware the stampede when a hot key "
+                     "expires — use a lock or serve-stale-while-revalidate."},
+    "n153": {"title": "Rate limiting",
+             "body": "Token bucket beats fixed window. Return 429 + Retry-After so "
+                     "clients back off deterministically. Limit per API key, not IP."},
+}
+
+def search_notes(query: str) -> str:
+    words = [w for w in query.lower().split() if len(w) > 2]
+    hits = [f"{nid}: {n['title']}" for nid, n in NOTES.items()
+            if any(w in (n["title"] + " " + n["body"]).lower() for w in words)]
+    return "\\n".join(hits[:5]) if hits else f"No notes matched {query!r}."
+
+def read_note(note_id: str) -> str:
+    n = NOTES.get(note_id)
+    return f"{n['title']}\\n\\n{n['body']}" if n else f"No note with id {note_id!r}."
+
+IMPL = {"search_notes": search_notes, "read_note": read_note}
 
 TOOLS = [
     {
@@ -85,11 +125,6 @@ TOOLS = [
         },
     },
 ]
-
-def search_notes(query: str) -> str: ...   # your implementations
-def read_note(note_id: str) -> str: ...
-
-IMPL = {"search_notes": search_notes, "read_note": read_note}
 
 def run_agent(question: str, max_iterations: int = 10) -> str:
     messages = [{"role": "user", "content": question}]
@@ -112,18 +147,60 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
                     "content": output,
                 })
         messages.append({"role": "user", "content": results})
-    raise RuntimeError("max iterations exceeded")   # we'll fix this in lesson 4`,
+    raise RuntimeError("max iterations exceeded")   # we'll fix this in lesson 4
+
+print(run_agent("What did I write about backoff?"))`,
       explanation:
-        "Read the loop body slowly — it's the same four-step dance from Module 1, just repeated. Notice what's *absent*: no if/else deciding whether to search first or read first. The model sequences the tools itself by reading the schemas and the accumulating results. The `for` instead of `while True` is your first guardrail; raising on exhaustion is bad manners we'll replace with graceful degradation in lesson 4.",
+        "Everything above `run_agent` is one-time setup — the key, a fake notes DB, and the tool implementations — so the cell actually runs in Colab. The *agent* is only the loop. Read its body slowly: it's the same four-step dance from Module 1, just repeated, and notice what's *absent* — no if/else deciding whether to search first or read first. The model sequences the tools itself by reading the schemas and the accumulating results. The `for` instead of `while True` is your first guardrail; raising on exhaustion is bad manners we'll replace with graceful degradation in lesson 4.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
 from openai import OpenAI
 
 client = OpenAI()
 MODEL = "gpt-5.5"
+
+# A tiny in-memory "notes database" so the tools do real work — no setup,
+# no files. Swap this for a real store later; the loop below never changes.
+NOTES = {
+    "n042": {"title": "Exponential backoff for retries",
+             "body": "On 429/5xx, retry with backoff: wait 2**attempt seconds + "
+                     "jitter, cap at 60s, give up after 5 tries. Jitter stops "
+                     "retries from synchronizing. Never retry 4xx except 429."},
+    "n107": {"title": "Caching layer design",
+             "body": "Read-through cache, 5-min TTL, key on the normalized query. "
+                     "Invalidate on write. Beware the stampede when a hot key "
+                     "expires — use a lock or serve-stale-while-revalidate."},
+    "n153": {"title": "Rate limiting",
+             "body": "Token bucket beats fixed window. Return 429 + Retry-After so "
+                     "clients back off deterministically. Limit per API key, not IP."},
+}
+
+def search_notes(query: str) -> str:
+    words = [w for w in query.lower().split() if len(w) > 2]
+    hits = [f"{nid}: {n['title']}" for nid, n in NOTES.items()
+            if any(w in (n["title"] + " " + n["body"]).lower() for w in words)]
+    return "\\n".join(hits[:5]) if hits else f"No notes matched {query!r}."
+
+def read_note(note_id: str) -> str:
+    n = NOTES.get(note_id)
+    return f"{n['title']}\\n\\n{n['body']}" if n else f"No note with id {note_id!r}."
+
+IMPL = {"search_notes": search_notes, "read_note": read_note}
 
 TOOLS = [
     {
@@ -152,32 +229,33 @@ TOOLS = [
     },
 ]
 
-def search_notes(query: str) -> str: ...   # your implementations
-def read_note(note_id: str) -> str: ...
-
-IMPL = {"search_notes": search_notes, "read_note": read_note}
-
 def run_agent(question: str, max_iterations: int = 10) -> str:
     input_items = [{"role": "user", "content": question}]
     for _ in range(max_iterations):
         resp = client.responses.create(
             model=MODEL, input=input_items, tools=TOOLS,
         )
+        # echo the WHOLE model turn back — reasoning items included, not just
+        # the function_call. gpt-5.x emits a reasoning item before each call;
+        # drop it and the next request 400s ("function_call ... was provided
+        # without its required 'reasoning' item").
+        input_items += resp.output
         calls = [item for item in resp.output if item.type == "function_call"]
         if not calls:
             return resp.output_text              # model chose to stop
 
         for call in calls:
             output = IMPL[call.name](**json.loads(call.arguments))
-            input_items.append(call)             # echo the call back
             input_items.append({
                 "type": "function_call_output",
                 "call_id": call.call_id,
                 "output": output,
             })
-    raise RuntimeError("max iterations exceeded")   # we'll fix this in lesson 4`,
+    raise RuntimeError("max iterations exceeded")   # we'll fix this in lesson 4
+
+print(run_agent("What did I write about backoff?"))`,
           explanation:
-            'Same loop, inverted termination signal: Anthropic says done via `stop_reason != "tool_use"`, while the Responses API says done by returning **no `function_call` items** in `resp.output`. Other mechanical differences: tool schemas use `parameters` (not `input_schema`), arguments arrive as a JSON string you must `json.loads`, results go back as `function_call_output` input items (after echoing the call), and `max_output_tokens` is optional where Anthropic\'s `max_tokens` is required.',
+            'Same loop, inverted termination signal: Anthropic says done via `stop_reason != "tool_use"`, while the Responses API says done by returning **no `function_call` items** in `resp.output`. The subtle part is echoing state back: append the **entire** `resp.output` (`input_items += resp.output`), not just the calls — on reasoning models (gpt-5.x) each `function_call` is preceded by a `reasoning` item, and if you replay the call without its reasoning item the next request 400s with "function_call ... without its required \'reasoning\' item". (The alternative is to drop the manual `input_items` list and pass `previous_response_id` instead, letting the API retain reasoning server-side — same fix, less bookkeeping.) This mirrors the Anthropic version, which appends the whole assistant turn (`content` and all). Other mechanical differences: tool schemas use `parameters` (not `input_schema`), arguments arrive as a JSON string you must `json.loads`, results go back as `function_call_output` input items, and `max_output_tokens` is optional where Anthropic\'s `max_tokens` is required.',
         },
       ],
     },
@@ -212,7 +290,9 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
       type: "code",
       language: "python",
       title: "instrument the loop and the dynamic path becomes visible",
-      code: `def run_with_trace(question: str, max_iterations: int = 10) -> str:
+      code: `# Colab cell 2 — run the setup cell above first (it defines client,
+# MODEL, TOOLS, IMPL). This just adds print() calls to the same loop.
+def run_with_trace(question: str, max_iterations: int = 10) -> str:
     messages = [{"role": "user", "content": question}]
     for i in range(max_iterations):
         resp = client.messages.create(
@@ -234,6 +314,11 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
         messages.append({"role": "user", "content": results})
     raise RuntimeError("max iterations exceeded")
 
+print(run_with_trace("What did I write about backoff?"))
+print("---")
+print(run_with_trace("Summarize my notes on rate limits and caching"))
+
+# A typical run prints something like:
 # Run 1: "What did I write about backoff?"
 #   [0] model chose: search_notes({'query': 'backoff'})
 #   [1] model chose: read_note({'note_id': 'n042'})
@@ -242,16 +327,18 @@ def run_agent(question: str, max_iterations: int = 10) -> str:
 # Run 2: "Summarize my notes on rate limits AND caching"
 #   [0] model chose: search_notes({'query': 'rate limits'})
 #   [0] model chose: search_notes({'query': 'caching'})     # parallel!
-#   [1] model chose: read_note({'note_id': 'n042'})
+#   [1] model chose: read_note({'note_id': 'n153'})
 #   [1] model chose: read_note({'note_id': 'n107'})
 #   [2] final answer after 2 tool iterations`,
       explanation:
-        "Two things to internalize from the sample traces: the path differs per question with zero code changes (that's the agent-ness), and the model may request **multiple tool calls in a single turn** — your executor must answer every one of them, and can run them concurrently since they arrived together.",
+        "Run this yourself and watch the two runs take different paths through the same code — that's the agent-ness. Two things to internalize: the path differs per question with zero code changes, and the model may request **multiple tool calls in a single turn** — your executor must answer every one of them, and can run them concurrently since they arrived together. Your exact ids and iteration counts will vary run to run; the *shape* won't.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell 2 — run the setup cell above first (it defines client,
+# MODEL, TOOLS, IMPL). This just adds print() calls to the same loop.
+import json
 
 def run_with_trace(question: str, max_iterations: int = 10) -> str:
     input_items = [{"role": "user", "content": question}]
@@ -259,6 +346,7 @@ def run_with_trace(question: str, max_iterations: int = 10) -> str:
         resp = client.responses.create(
             model=MODEL, input=input_items, tools=TOOLS,
         )
+        input_items += resp.output              # whole turn back (reasoning too)
         calls = [item for item in resp.output if item.type == "function_call"]
         if not calls:
             print(f"[{i}] final answer after {i} tool iterations")
@@ -269,11 +357,15 @@ def run_with_trace(question: str, max_iterations: int = 10) -> str:
             print(f"[{i}] model chose: {call.name}({args})")
             output = IMPL[call.name](**args)
             print(f"[{i}]   -> {len(output)} chars back")
-            input_items.append(call)
             input_items.append({"type": "function_call_output",
                                 "call_id": call.call_id, "output": output})
     raise RuntimeError("max iterations exceeded")
 
+print(run_with_trace("What did I write about backoff?"))
+print("---")
+print(run_with_trace("Summarize my notes on rate limits and caching"))
+
+# A typical run prints something like:
 # Run 1: "What did I write about backoff?"
 #   [0] model chose: search_notes({'query': 'backoff'})
 #   [1] model chose: read_note({'note_id': 'n042'})
@@ -282,11 +374,11 @@ def run_with_trace(question: str, max_iterations: int = 10) -> str:
 # Run 2: "Summarize my notes on rate limits AND caching"
 #   [0] model chose: search_notes({'query': 'rate limits'})
 #   [0] model chose: search_notes({'query': 'caching'})     # parallel!
-#   [1] model chose: read_note({'note_id': 'n042'})
+#   [1] model chose: read_note({'note_id': 'n153'})
 #   [1] model chose: read_note({'note_id': 'n107'})
 #   [2] final answer after 2 tool iterations`,
           explanation:
-            "Identical traces, identical lesson — the only mechanics that change are collecting `function_call` items from `resp.output` and parsing each call's `arguments` from a JSON string before dispatch.",
+            "Same lesson as the Anthropic tab — run it and watch the path differ per question. The mechanics that change: collect `function_call` items from `resp.output`, parse each call's `arguments` from a JSON string before dispatch, and echo the whole `resp.output` back each turn so reasoning items ride along with the calls. Your exact ids and iteration counts will vary run to run; the *shape* won't.",
         },
       ],
     },
