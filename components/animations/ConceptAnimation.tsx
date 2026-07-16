@@ -35,8 +35,9 @@ const REGISTRY: Record<AnimationName, Entry> = {
       import("./FoundationAnims").then((m) => m.AgentLoopAnim),
     ),
     w: 640,
-    h: 300,
-    cycleMs: 3800, // one 3.6s lap
+    h: 360,
+    steps: 6, // user task → call → result → call → result → final answer (no tool)
+    stepMs: 2100,
   },
   "token-stream": {
     Component: dynamic(() =>

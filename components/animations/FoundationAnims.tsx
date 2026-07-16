@@ -11,101 +11,184 @@ import {
 } from "./primitives";
 import { useAnimPlayback } from "./controller";
 
-/* ---------- 1. The agent loop: LLM → tool call → result → LLM ---------- */
+/* ---------- 1. The agent loop: model decides each step; result → messages;
+   loop exits only when the model returns a final answer with no tool_call ---- */
+const MONO = "ui-monospace, Menlo, monospace";
+
+// the messages[] transcript, one row revealed per step. The point of the
+// diagram: the array GROWS as the loop turns, and the model — not your code —
+// chooses each assistant action, including when to stop asking for tools.
+const LOOP_MSGS = [
+  { role: "user", color: "#38bdf8", text: "“summarize my notes on RAG”" },
+  { role: "assistant", color: "#a78bfa", text: "tool_call search_notes(“RAG”)" },
+  { role: "tool", color: "#34d399", text: "→ 5 snippets [n12, n41 …]" },
+  { role: "assistant", color: "#a78bfa", text: "tool_call read_note(n41)" },
+  { role: "tool", color: "#34d399", text: "→ note body (820 tokens)" },
+  { role: "assistant", color: "#a78bfa", text: "“Your RAG notes cover 3…” · no tool" },
+];
+
+const LOOP_STATUS = [
+  "messages = [ user task ]",
+  "iteration 1 — the model chooses search_notes",
+  "your code runs the tool, appends the result",
+  "iteration 2 — the model chooses read_note",
+  "your code runs the tool, appends the result",
+  "iteration 3 — no tool_call → loop exits",
+];
+
+const ROW_X = 246;
+const ROW_W = 372;
+const ROW_H = 40;
+const ROW_GAP = 6;
+const rowY = (i: number) => 46 + i * (ROW_H + ROW_GAP);
+
 export function AgentLoopAnim() {
-  const { playing } = useAnimPlayback();
+  const { playing, step } = useAnimPlayback();
+
+  const llmActive = step === 0 || step === 1 || step === 3 || step === 5;
+  const toolsActive = step === 2 || step === 4;
+  const callActive = step === 1 || step === 3; // LLM → Tools (tool_call)
+  const resultActive = step === 2 || step === 4; // Tools → LLM (result)
+  const done = step === 5;
+
+  const midLabel = done
+    ? { text: "exit ✓", color: "#34d399" }
+    : callActive
+      ? { text: "tool_call ↓", color: "#a78bfa" }
+      : resultActive
+        ? { text: "↑ result", color: "#34d399" }
+        : { text: "start", color: "#64748b" };
+
   return (
-    <Stage viewBox="0 0 640 300">
-      <Node
-        x={40}
-        y={110}
-        w={150}
-        h={80}
-        label="LLM"
-        sub="reason + decide"
-        color="#a78bfa"
+    <Stage viewBox="0 0 640 360">
+      {/* ---- left rail: the while-loop between the model and your tools ---- */}
+      <motion.rect
+        x={24}
+        y={74}
+        width={150}
+        height={74}
+        rx={10}
+        fill="#a78bfa14"
+        stroke="#a78bfa"
+        initial={false}
+        animate={{
+          strokeOpacity: llmActive ? 0.95 : 0.4,
+          strokeWidth: llmActive ? 2.4 : 1.4,
+        }}
+        transition={{ duration: 0.3 }}
       />
-      <Node
-        x={450}
-        y={110}
-        w={150}
-        h={80}
-        label="Tools"
-        sub="execute"
-        color="#34d399"
-      />
-      <Node x={245} y={20} w={150} h={54} label="User task" color="#38bdf8" />
-      <Node
-        x={245}
-        y={226}
-        w={150}
-        h={54}
-        label="Final answer"
-        color="#38bdf8"
-      />
+      <text x={99} y={107} textAnchor="middle" fill="#e2e8f0" fontSize={13} fontWeight={600} fontFamily={MONO}>
+        LLM
+      </text>
+      <text x={99} y={124} textAnchor="middle" fill="#64748b" fontSize={10} fontFamily={MONO}>
+        reason + decide
+      </text>
 
-      <FlowEdge d="M 320 74 V 96 Q 320 110 300 118 L 200 148" color="#38bdf8" />
-      <FlowEdge d="M 190 130 Q 320 70 450 130" color="#a78bfa" />
-      <FlowEdge d="M 450 170 Q 320 230 190 170" color="#34d399" />
-      <FlowEdge
-        d="M 200 165 L 300 190 Q 320 196 320 210 V 226"
-        color="#38bdf8"
+      <motion.rect
+        x={24}
+        y={224}
+        width={150}
+        height={74}
+        rx={10}
+        fill="#34d39914"
+        stroke="#34d399"
+        initial={false}
+        animate={{
+          strokeOpacity: toolsActive ? 0.95 : 0.4,
+          strokeWidth: toolsActive ? 2.4 : 1.4,
+        }}
+        transition={{ duration: 0.3 }}
       />
+      <text x={99} y={257} textAnchor="middle" fill="#e2e8f0" fontSize={13} fontWeight={600} fontFamily={MONO}>
+        Tools
+      </text>
+      <text x={99} y={274} textAnchor="middle" fill="#64748b" fontSize={10} fontFamily={MONO}>
+        your code runs
+      </text>
 
-      {/* pulse riding the loop — one lap per pass, ends back at the LLM */}
-      <motion.circle
-        r={6}
-        fill="#a78bfa"
-        {...loopMotion(
-          playing,
-          {
-            animate: {
-              cx: [190, 320, 450, 450, 320, 190],
-              cy: [130, 88, 130, 170, 212, 170],
-              opacity: 1,
-            },
-            transition: { duration: 3.6, ease: "easeInOut" },
-          },
-          { cx: 190, cy: 130, opacity: 0.6 },
-        )}
+      {/* the two-way channel; the active leg flows and brightens */}
+      <path
+        d="M 78 148 C 40 176, 40 196, 78 224"
+        fill="none"
+        stroke="#a78bfa"
+        strokeOpacity={callActive ? 0.9 : 0.22}
+        strokeWidth={callActive ? 2.4 : 1.4}
+        strokeDasharray="6 8"
+        className={callActive ? "animate-flow-dash" : undefined}
+        style={{ animationPlayState: playing ? "running" : "paused" }}
+      />
+      <path
+        d="M 120 224 C 158 196, 158 176, 120 148"
+        fill="none"
+        stroke="#34d399"
+        strokeOpacity={resultActive ? 0.9 : 0.22}
+        strokeWidth={resultActive ? 2.4 : 1.4}
+        strokeDasharray="6 8"
+        className={resultActive ? "animate-flow-dash" : undefined}
+        style={{ animationPlayState: playing ? "running" : "paused" }}
       />
       <motion.text
-        x={320}
-        y={158}
+        key={midLabel.text}
+        x={99}
+        y={190}
         textAnchor="middle"
-        fill="#64748b"
+        fill={midLabel.color}
         fontSize={11}
-        fontFamily="ui-monospace, Menlo, monospace"
-        {...loopMotion(
-          playing,
-          {
-            animate: { opacity: [0.4, 1, 0.4] },
-            transition: { duration: 3.6 },
-          },
-          { opacity: 0.7 },
-        )}
+        fontFamily={MONO}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
       >
-        loop until done ↺
+        {midLabel.text}
       </motion.text>
-      <text
-        x={320}
-        y={100}
-        textAnchor="middle"
-        fill="#a78bfa"
-        fontSize={10}
-        fontFamily="monospace"
+
+      {/* exit arrow: only the model can end the loop */}
+      <motion.g
+        initial={false}
+        animate={{ opacity: done ? 1 : 0 }}
+        transition={{ duration: 0.35 }}
       >
-        tool_call(name, args)
+        <path d="M 174 111 H 214" fill="none" stroke="#34d399" strokeWidth={1.6} />
+        <path d="M 209 106 L 216 111 L 209 116 Z" fill="#34d399" />
+      </motion.g>
+
+      {/* ---- right: messages[] transcript, one row appended per iteration ---- */}
+      <text x={ROW_X} y={30} fill="#94a3b8" fontSize={12} fontWeight={600} fontFamily={MONO}>
+        messages[]
       </text>
-      <text
-        x={320}
-        y={205}
-        textAnchor="middle"
-        fill="#34d399"
-        fontSize={10}
-        fontFamily="monospace"
-      >
-        tool result → appended to messages
+      {LOOP_MSGS.map((m, i) => {
+        const active = i === step;
+        const y = rowY(i);
+        return (
+          <StepReveal key={i} index={i} dim={1}>
+            <motion.rect
+              x={ROW_X}
+              y={y}
+              width={ROW_W}
+              height={ROW_H}
+              rx={8}
+              fill={`${m.color}${active ? "26" : "12"}`}
+              stroke={m.color}
+              initial={false}
+              animate={{
+                strokeOpacity: active ? 0.95 : 0.35,
+                strokeWidth: active ? 2 : 1.2,
+              }}
+              transition={{ duration: 0.3 }}
+            />
+            <text x={ROW_X + 14} y={y + 16} fill={m.color} fontSize={9} fontWeight={700} fontFamily={MONO} letterSpacing="0.06em">
+              {m.role.toUpperCase()}
+            </text>
+            <text x={ROW_X + 14} y={y + 31} fill="#cbd5e1" fontSize={11.5} fontFamily={MONO}>
+              {m.text}
+            </text>
+          </StepReveal>
+        );
+      })}
+
+      {/* dynamic status: names WHO decides at each step */}
+      <text x={24} y={344} fill="#64748b" fontSize={11} fontFamily={MONO}>
+        {LOOP_STATUS[step]}
       </text>
     </Stage>
   );
