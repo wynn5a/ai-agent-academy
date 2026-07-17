@@ -22,7 +22,46 @@ export const lesson02: Lesson = {
       language: "python",
       title:
         "the original technique: ReAct as pure prompting (know it, don't ship it)",
-      code: `import re
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import re
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
+
+# A tiny in-memory knowledge base so the actions do real work — no setup,
+# no files. search[] finds titles; lookup[] reads one article in full.
+KB = {
+    "ReAct": "ReAct interleaves Thought, Action, and Observation steps. "
+             "Reason-only models hallucinate facts; act-only models make "
+             "impulsive, unrecoverable moves. Interleaving the two beats both.",
+    "Agent loop": "An agent is an LLM calling tools in a loop where the model — "
+                  "not your code — chooses the next action each iteration.",
+    "Exponential backoff": "On 429/5xx, retry with wait 2**attempt seconds plus "
+                           "jitter, capped at 60s; give up after 5 tries.",
+}
+
+def search(query: str) -> str:
+    words = [w for w in query.lower().split() if len(w) > 2]
+    hits = [t for t in KB if any(w in t.lower() for w in words)]
+    # on a miss, name what DOES exist — an empty dead-end invites the model
+    # to stop searching and answer from memory (ungrounded). See the loop below.
+    return "Titles: " + ", ".join(hits) if hits else (
+        "No match. The KB contains: " + ", ".join(KB))
+
+def lookup(title: str) -> str:
+    return KB.get(title, f"No article titled {title!r}.")
 
 REACT_PROMPT = """Answer the question by interleaving Thought, Action, and
 Observation steps.
@@ -51,14 +90,70 @@ def react_step(messages) -> tuple[str, str]:
     match = re.search(r"Action: *(\\w+)\\[(.*)\\]", text)
     if match is None:
         raise ValueError("model broke the ReAct format:\\n" + text)
-    return match.group(1), match.group(2)   # e.g. ("search", "agent loops")`,
+    return match.group(1), match.group(2)   # e.g. ("search", "ReAct")
+
+def run_react(question: str, max_steps: int = 6) -> str:
+    messages = [{"role": "user", "content": REACT_PROMPT.format(question=question)}]
+    for _ in range(max_steps):
+        action, arg = react_step(messages)
+        arg = arg.strip().strip("'").strip('"')   # models love quoting args
+        print(f"Action: {action}[{arg}]")
+        if action == "finish":
+            return arg
+        obs = search(arg) if action == "search" else lookup(arg)
+        print(f"Observation: {obs}")
+        # feed the action + real observation back as the next turn of context
+        messages.append({"role": "assistant", "content": f"Action: {action}[{arg}]"})
+        messages.append({"role": "user", "content": f"Observation: {obs}"})
+    raise RuntimeError("max steps exceeded")
+
+print(run_react("What problem does the ReAct pattern solve?"))`,
       explanation:
-        'Two load-bearing tricks: `stop_sequences=["Observation:"]` cuts the model off before it invents its own observation (early ReAct implementations lived and died by this), and the regex extracts the action from free text — which is exactly the fragile parsing that native tool calling replaced with schema-validated JSON. You should be able to explain this history in an interview, but never build on regex parsing in 2026.',
+        'Two load-bearing tricks: `stop_sequences=["Observation:"]` cuts the model off before it invents its own observation (early ReAct implementations lived and died by this), and the regex extracts the action from free text — which is exactly the fragile parsing that native tool calling replaced with schema-validated JSON. Everything above `react_step` is one-time setup (key, a fake KB, the two action implementations) so the cell runs in Colab; `run_react` is the loop that grounds each `Observation` in the KB rather than the model\'s imagination. You should be able to explain this history in an interview, but never build on regex parsing in 2026.',
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import re
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import re
+from openai import OpenAI
+
+client = OpenAI()
+MODEL = "gpt-5.5"
+
+# A tiny in-memory knowledge base so the actions do real work — no setup,
+# no files. search[] finds titles; lookup[] reads one article in full.
+KB = {
+    "ReAct": "ReAct interleaves Thought, Action, and Observation steps. "
+             "Reason-only models hallucinate facts; act-only models make "
+             "impulsive, unrecoverable moves. Interleaving the two beats both.",
+    "Agent loop": "An agent is an LLM calling tools in a loop where the model — "
+                  "not your code — chooses the next action each iteration.",
+    "Exponential backoff": "On 429/5xx, retry with wait 2**attempt seconds plus "
+                           "jitter, capped at 60s; give up after 5 tries.",
+}
+
+def search(query: str) -> str:
+    words = [w for w in query.lower().split() if len(w) > 2]
+    hits = [t for t in KB if any(w in t.lower() for w in words)]
+    # on a miss, name what DOES exist — an empty dead-end invites the model
+    # to stop searching and answer from memory (ungrounded). See the loop below.
+    return "Titles: " + ", ".join(hits) if hits else (
+        "No match. The KB contains: " + ", ".join(KB))
+
+def lookup(title: str) -> str:
+    return KB.get(title, f"No article titled {title!r}.")
 
 REACT_PROMPT = """Answer the question by interleaving Thought, Action, and
 Observation steps.
@@ -79,7 +174,7 @@ Question: {question}"""
 
 def react_step(messages) -> tuple[str, str]:
     resp = client.chat.completions.create(
-        model=MODEL, max_tokens=512,
+        model=MODEL, max_completion_tokens=512,
         stop=["Observation:"],   # forbid hallucinating results
         messages=messages,
     )
@@ -87,9 +182,26 @@ def react_step(messages) -> tuple[str, str]:
     match = re.search(r"Action: *(\\w+)\\[(.*)\\]", text)
     if match is None:
         raise ValueError("model broke the ReAct format:\\n" + text)
-    return match.group(1), match.group(2)   # e.g. ("search", "agent loops")`,
+    return match.group(1), match.group(2)   # e.g. ("search", "ReAct")
+
+def run_react(question: str, max_steps: int = 6) -> str:
+    messages = [{"role": "user", "content": REACT_PROMPT.format(question=question)}]
+    for _ in range(max_steps):
+        action, arg = react_step(messages)
+        arg = arg.strip().strip("'").strip('"')   # models love quoting args
+        print(f"Action: {action}[{arg}]")
+        if action == "finish":
+            return arg
+        obs = search(arg) if action == "search" else lookup(arg)
+        print(f"Observation: {obs}")
+        # feed the action + real observation back as the next turn of context
+        messages.append({"role": "assistant", "content": f"Action: {action}[{arg}]"})
+        messages.append({"role": "user", "content": f"Observation: {obs}"})
+    raise RuntimeError("max steps exceeded")
+
+print(run_react("What problem does the ReAct pattern solve?"))`,
           explanation:
-            "Same trick, `stop` instead of `stop_sequences` — Chat Completions caps this at 4 strings, plenty for one keyword. The rest of the fragility is identical: `resp.choices[0].message.content` is still free text you regex-parse, which is the whole reason this approach didn't survive contact with typed tool calling.",
+            "Same trick, `stop` instead of `stop_sequences` — Chat Completions caps this at 4 strings, plenty for one keyword (and note `max_completion_tokens`, since reasoning models rejected the old `max_tokens`). We deliberately use Chat Completions here, not the Responses API the rest of this course defaults to: this text protocol predates structured tool calling and pairs naturally with `stop` + reading `message.content`. On a modern reasoning model you'd reach for the Responses API instead — this block is the legacy shape on purpose, so you recognize it in old codebases. The rest of the fragility is identical: `resp.choices[0].message.content` is still free text you regex-parse, which is the whole reason this approach didn't survive contact with typed tool calling.",
         },
       ],
     },
@@ -145,7 +257,58 @@ def react_step(messages) -> tuple[str, str]:
       type: "code",
       language: "python",
       title: "plan-first agent with an explicit re-plan escape hatch",
-      code: `PLAN_TOOL = {
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
+
+# A tiny in-memory "repo" so list_dir/grep/read_file do real work.
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
+
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
+
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+WORK_IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+WORK_TOOLS = [
+    {"name": "list_dir", "description": "List repo paths under a prefix.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}}, "required": []}},
+    {"name": "grep", "description": "Find lines matching a substring.",
+     "input_schema": {"type": "object",
+                      "properties": {"pattern": {"type": "string"}},
+                      "required": ["pattern"]}},
+    {"name": "read_file", "description": "Read one file in full, by path.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}},
+                      "required": ["path"]}},
+]
+
+PLAN_TOOL = {
     "name": "submit_plan",
     "description": "Record a step-by-step plan before doing any work.",
     "input_schema": {
@@ -171,9 +334,10 @@ def make_plan(question: str) -> list[str]:
     block = next(b for b in resp.content if b.type == "tool_use")
     return block.input["steps"]
 
-def run_with_plan(question: str) -> str:
+def run_with_plan(question: str, max_iterations: int = 12) -> str:
     plan = make_plan(question)
     plan_text = "\\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
+    print("Initial plan:\\n" + plan_text + "\\n")
     task = (
         f"Question: {question}\\n\\nYour plan:\\n{plan_text}\\n\\n"
         "Follow the plan, but treat it as a hypothesis. If an observation "
@@ -181,17 +345,94 @@ def run_with_plan(question: str) -> str:
         "revised plan, then continue."
     )
     messages = [{"role": "user", "content": task}]
-    # ... standard loop from lesson 1, with submit_plan available as a tool;
-    # when the model calls it mid-run, log the revision and return
-    # "Plan updated." as the tool_result.
-    ...`,
+    revisions = 0
+    for _ in range(max_iterations):
+        resp = client.messages.create(
+            model=MODEL, max_tokens=1024,
+            tools=[PLAN_TOOL] + WORK_TOOLS, messages=messages,
+        )
+        if resp.stop_reason != "tool_use":
+            return next(b.text for b in resp.content if b.type == "text")
+        messages.append({"role": "assistant", "content": resp.content})
+        results = []
+        for block in resp.content:
+            if block.type != "tool_use":
+                continue
+            if block.name == "submit_plan":          # re-plan escape hatch
+                revisions += 1
+                revised = "\\n".join(f"{i + 1}. {s}"
+                                     for i, s in enumerate(block.input["steps"]))
+                print(f"Re-plan #{revisions}:\\n{revised}\\n")
+                output = "Plan updated."
+            else:
+                output = WORK_IMPL[block.name](**block.input)
+                print(f"{block.name}({block.input}) -> {output[:60]!r}")
+            results.append({"type": "tool_result",
+                            "tool_use_id": block.id, "content": output})
+        messages.append({"role": "user", "content": results})
+    raise RuntimeError("max iterations exceeded")
+
+print(run_with_plan("How does this service configure retries?"))`,
       explanation:
-        "Three deliberate choices: the plan is produced by a **forced structured call** (Module 1's tool-choice trick), so you always get a parseable list; the plan is framed as \"a hypothesis\", which measurably lowers the model's tendency to defend it; and re-planning is a *tool call* — so it shows up in your trace log and you can count revisions per run. An agent that re-plans 5 times in 15 iterations is telling you the task or tools are underspecified.",
+        "Three deliberate choices: the plan is produced by a **forced structured call** (Module 1's tool-choice trick), so you always get a parseable list; the plan is framed as \"a hypothesis\", which measurably lowers the model's tendency to defend it; and re-planning is a *tool call* — so it shows up in your trace log and you can count revisions per run (the `revisions` counter here). Everything above `PLAN_TOOL` is one-time setup — the key and a fake repo with `list_dir`/`grep`/`read_file` — so the cell runs in Colab; the loop is the same shape as lesson 1, just with `submit_plan` available mid-run. An agent that re-plans 5 times in 15 iterations is telling you the task or tools are underspecified.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
+from openai import OpenAI
+
+client = OpenAI()
+MODEL = "gpt-5.5"
+
+# A tiny in-memory "repo" so list_dir/grep/read_file do real work.
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
+
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
+
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+WORK_IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+WORK_TOOLS = [
+    {"type": "function", "name": "list_dir",
+     "description": "List repo paths under a prefix.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}}, "required": []}},
+    {"type": "function", "name": "grep",
+     "description": "Find lines matching a substring.",
+     "parameters": {"type": "object",
+                    "properties": {"pattern": {"type": "string"}},
+                    "required": ["pattern"]}},
+    {"type": "function", "name": "read_file",
+     "description": "Read one file in full, by path.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"]}},
+]
 
 PLAN_TOOL = {
     "type": "function",
@@ -220,9 +461,10 @@ def make_plan(question: str) -> list[str]:
     call = next(item for item in resp.output if item.type == "function_call")
     return json.loads(call.arguments)["steps"]
 
-def run_with_plan(question: str) -> str:
+def run_with_plan(question: str, max_iterations: int = 12) -> str:
     plan = make_plan(question)
     plan_text = "\\n".join(f"{i + 1}. {s}" for i, s in enumerate(plan))
+    print("Initial plan:\\n" + plan_text + "\\n")
     task = (
         f"Question: {question}\\n\\nYour plan:\\n{plan_text}\\n\\n"
         "Follow the plan, but treat it as a hypothesis. If an observation "
@@ -230,12 +472,33 @@ def run_with_plan(question: str) -> str:
         "revised plan, then continue."
     )
     input_items = [{"role": "user", "content": task}]
-    # ... standard loop from lesson 1, with submit_plan available as a tool;
-    # when the model calls it mid-run, log the revision and append a
-    # function_call_output of "Plan updated."
-    ...`,
+    revisions = 0
+    for _ in range(max_iterations):
+        resp = client.responses.create(
+            model=MODEL, input=input_items, tools=[PLAN_TOOL] + WORK_TOOLS,
+        )
+        input_items += resp.output              # whole turn back (reasoning too)
+        calls = [item for item in resp.output if item.type == "function_call"]
+        if not calls:
+            return resp.output_text
+        for call in calls:
+            args = json.loads(call.arguments)
+            if call.name == "submit_plan":       # re-plan escape hatch
+                revisions += 1
+                revised = "\\n".join(f"{i + 1}. {s}"
+                                     for i, s in enumerate(args["steps"]))
+                print(f"Re-plan #{revisions}:\\n{revised}\\n")
+                output = "Plan updated."
+            else:
+                output = WORK_IMPL[call.name](**args)
+                print(f"{call.name}({args}) -> {output[:60]!r}")
+            input_items.append({"type": "function_call_output",
+                                "call_id": call.call_id, "output": output})
+    raise RuntimeError("max iterations exceeded")
+
+print(run_with_plan("How does this service configure retries?"))`,
           explanation:
-            'Forcing a specific tool is `tool_choice={"type": "function", "name": ...}` (vs Anthropic\'s `{"type": "tool", ...}`), and the forced call arrives as a `function_call` item whose `arguments` is a JSON string to parse — not a pre-parsed `input` dict.',
+            'Forcing a specific tool is `tool_choice={"type": "function", "name": ...}` (vs Anthropic\'s `{"type": "tool", ...}`), and the forced call arrives as a `function_call` item whose `arguments` is a JSON string to parse — not a pre-parsed `input` dict. The run loop echoes the whole `resp.output` back each turn (`input_items += resp.output`) so reasoning items ride along with the calls, exactly as in lesson 1; `submit_plan` is just another tool the model can reach mid-run, and its result goes back as a `function_call_output`.',
         },
       ],
     },
@@ -248,6 +511,12 @@ def run_with_plan(question: str) -> str:
       kind: "warning",
       title: "When planning hurts",
       text: "A plan step adds a full LLM call of cost and latency, plus permanent context weight. For a task the model can do in 2–3 tool calls, planning is pure overhead — and a wrong plan is *worse* than no plan, because it anchors the model. Rule of thumb: add upfront planning when tasks routinely exceed ~5 tool calls or need coverage guarantees; skip it below that.",
+    },
+    {
+      type: "callout",
+      kind: "career",
+      title: "What the interview actually probes",
+      text: '"Design an agent that plans and executes a multi-step task" is a staple of senior agent-design rounds — and the junior/senior split lives entirely in the follow-ups. Reciting "ReAct = Thought/Action/Observation" is table stakes; the senior tells are naming **plan drift** unprompted, making **re-planning an explicit tool call** so it surfaces in traces, knowing **when *not* to plan** (short tasks, where a wrong plan anchors the model), and explaining why native tool calling made the Observation structurally impossible to forge. Volunteer the *costs and failure modes*, not just the mechanism — that is the line interviewers listen for.',
     },
     {
       type: "heading",
