@@ -11,5 +11,8 @@ next-env.d.ts
 # local CodeGraph index
 .codegraph/
 
+# local tooling scaffold (has its own node_modules / cron lock)
+.mimocode/
+
 # local skill eval run output (artifacts regenerate on each run)
 .claude/skills/*-workspace/
