@@ -96,6 +96,7 @@ const REGISTRY: Record<AnimationName, Entry> = {
     w: 640,
     h: 240,
     steps: 5,
+    stepMs: 1500,
   },
   "termination-guards": {
     Component: dynamic(() =>
