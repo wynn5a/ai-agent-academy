@@ -35,7 +35,30 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "threshold-triggered compaction",
-      code: `COMPACT_AT = 0.75          # of the window budget
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
+
+def count(messages: list, system: str = "") -> int:  # lesson 1's counter
+    kwargs = {"model": MODEL, "messages": messages}
+    if system:
+        kwargs["system"] = system
+    return client.messages.count_tokens(**kwargs).input_tokens
+
+COMPACT_AT = 0.75          # of the window budget
 WINDOW_BUDGET = 60_000     # tokens you allow the conversation to occupy
 KEEP_RECENT = 8            # messages kept verbatim
 
@@ -78,14 +101,54 @@ def starts_with_tool_result(msg: dict) -> bool:
     return (msg["role"] == "user" and isinstance(c, list)
             and any(getattr(b, "type", None) == "tool_result"
                     or (isinstance(b, dict) and b.get("type") == "tool_result")
-                    for b in c))`,
+                    for b in c))
+
+# demo: shrink the budget so compaction triggers on a short scripted chat
+WINDOW_BUDGET = 2_000
+messages = [
+    {"role": "user", "content": "Constraint: never modify files under "
+                                "legacy/ - they are frozen for the audit."},
+    {"role": "assistant", "content": "Noted: legacy/ is frozen."},
+]
+for i in range(10):
+    messages.append({"role": "user",
+                     "content": f"Please refactor helper_{i}.py and report back. " * 15})
+    messages.append({"role": "assistant",
+                     "content": f"Refactored helper_{i}.py; tests still pass. " * 15})
+compacted = maybe_compact(messages, "You are a careful coding agent.")
+print(f"{len(messages)} messages -> {len(compacted)}")
+print(compacted[0]["content"][:400])`,
       explanation:
-        "The boundary shuffle is the part everyone gets wrong first: if the kept region begins with a `tool_result`, its `tool_use` partner just got summarized away and your next API call 400s. Also note the summarizer runs with an explicit preservation list baked into the system prompt — a freestyle summary will smooth away the exact constraint you most needed.",
+        "The boundary shuffle is the part everyone gets wrong first: if the kept region begins with a `tool_result`, its `tool_use` partner just got summarized away and your next API call 400s. Also note the summarizer runs with an explicit preservation list baked into the system prompt — a freestyle summary will smooth away the exact constraint you most needed. The demo shrinks WINDOW_BUDGET to 2,000 so compaction fires on a 22-message scripted chat; the threshold logic is identical at 60K.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `COMPACT_AT = 0.75          # of the window budget
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai tiktoken
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+from openai import OpenAI
+import tiktoken
+
+client = OpenAI()
+MODEL = "gpt-5.5"
+
+enc = tiktoken.get_encoding("o200k_base")
+
+def count(messages: list, instructions: str = "") -> int:  # lesson 1's estimator
+    text = instructions + "".join(str(m.get("content", "")) for m in messages)
+    return len(enc.encode(text)) + 4 * len(messages)
+
+COMPACT_AT = 0.75          # of the window budget
 WINDOW_BUDGET = 60_000     # tokens you allow the conversation to occupy
 KEEP_RECENT = 8            # messages kept verbatim
 
@@ -126,7 +189,23 @@ def maybe_compact(messages: list[dict], instructions: str) -> list[dict]:
 def is_function_call_output(msg: dict) -> bool:
     # Responses histories interleave role messages with function_call /
     # function_call_output items; the strict pairing rule applies to those
-    return isinstance(msg, dict) and msg.get("type") == "function_call_output"`,
+    return isinstance(msg, dict) and msg.get("type") == "function_call_output"
+
+# demo: shrink the budget so compaction triggers on a short scripted chat
+WINDOW_BUDGET = 2_000
+messages = [
+    {"role": "user", "content": "Constraint: never modify files under "
+                                "legacy/ - they are frozen for the audit."},
+    {"role": "assistant", "content": "Noted: legacy/ is frozen."},
+]
+for i in range(10):
+    messages.append({"role": "user",
+                     "content": f"Please refactor helper_{i}.py and report back. " * 15})
+    messages.append({"role": "assistant",
+                     "content": f"Refactored helper_{i}.py; tests still pass. " * 15})
+compacted = maybe_compact(messages, "You are a careful coding agent.")
+print(f"{len(messages)} messages -> {len(compacted)}")
+print(compacted[0]["content"][:400])`,
           explanation:
             "The Responses API *offers* server-side conversation state (`previous_response_id`) that would spare you resending history — deliberately unused here, because compaction only works if you own the message list, so this pattern stays stateless like the Claude version. The pairing rule survives the translation with new names: never let the cut orphan a `function_call_output` item from its `function_call`, or the next call is rejected exactly as Anthropic rejects a stranded `tool_result`.",
         },
@@ -142,7 +221,20 @@ def is_function_call_output(msg: dict) -> bool:
       type: "code",
       language: "python",
       title: "a compaction regression test",
-      code: `def test_constraint_survives_compaction():
+      code: `# Colab cell 2 — run cell 1 first (client, count, maybe_compact; its demo
+# left WINDOW_BUDGET at 2_000 so this test compacts cheaply).
+SYSTEM_PROMPT = "You are a careful coding agent. Honor every standing constraint."
+
+def pad_with_filler_turns(messages: list[dict], turns: int) -> list[dict]:
+    padded = list(messages)
+    for i in range(turns):
+        padded.append({"role": "user",
+                       "content": f"Please refactor helper_{i}.py and report back. " * 15})
+        padded.append({"role": "assistant",
+                       "content": f"Refactored helper_{i}.py; tests still pass. " * 15})
+    return padded
+
+def test_constraint_survives_compaction():
     messages = [
         {"role": "user", "content":
          "We're refactoring billing. Constraint: never modify files "
@@ -161,14 +253,30 @@ def is_function_call_output(msg: dict) -> bool:
     text = next(b.text for b in resp.content if b.type == "text")
     answer = text.lower()
     assert "frozen" in answer or "legacy" in answer and "no" in answer.split(".")[0], (
-        "agent forgot the frozen-directory constraint after compaction")`,
+        "agent forgot the frozen-directory constraint after compaction")
+
+test_constraint_survives_compaction()
+print("constraint survived compaction")`,
       explanation:
         "This is behavior-level testing: don't inspect the summary text (brittle), verify the *agent still acts correctly* after compaction. Keep two or three of these planted-constraint scenarios in your suite and run them whenever you touch the summarizer prompt — summarizer prompts regress silently.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `def test_constraint_survives_compaction():
+          code: `# Colab cell 2 — run cell 1 first (client, count, maybe_compact; its demo
+# left WINDOW_BUDGET at 2_000 so this test compacts cheaply).
+SYSTEM_PROMPT = "You are a careful coding agent. Honor every standing constraint."
+
+def pad_with_filler_turns(messages: list[dict], turns: int) -> list[dict]:
+    padded = list(messages)
+    for i in range(turns):
+        padded.append({"role": "user",
+                       "content": f"Please refactor helper_{i}.py and report back. " * 15})
+        padded.append({"role": "assistant",
+                       "content": f"Refactored helper_{i}.py; tests still pass. " * 15})
+    return padded
+
+def test_constraint_survives_compaction():
     messages = [
         {"role": "user", "content":
          "We're refactoring billing. Constraint: never modify files "
@@ -187,7 +295,10 @@ def is_function_call_output(msg: dict) -> bool:
                                    input=compacted)
     answer = resp.output_text.lower()
     assert "frozen" in answer or "legacy" in answer and "no" in answer.split(".")[0], (
-        "agent forgot the frozen-directory constraint after compaction")`,
+        "agent forgot the frozen-directory constraint after compaction")
+
+test_constraint_survives_compaction()
+print("constraint survived compaction")`,
           explanation:
             "The test is provider-agnostic by design — only the final call changes: `instructions=` + `input=` + `resp.output_text` replace `system=` + `messages=` + walking content blocks. The assertion targets behavior, not summary wording, so it ports across providers (and across your own summarizer rewrites) unchanged.",
         },

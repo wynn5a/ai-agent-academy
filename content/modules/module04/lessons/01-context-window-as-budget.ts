@@ -67,7 +67,19 @@ export const lesson01: Lesson = {
       type: "code",
       language: "python",
       title: "an explicit context budget, enforced in code",
-      code: `import anthropic
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
 
 client = anthropic.Anthropic()
 MODEL = "claude-sonnet-5"
@@ -104,14 +116,36 @@ def assemble_window(system_prompt: str, memories: list[str],
         messages.append({"role": "assistant", "content":
             "Understood. Continuing from that summary."})
     messages.extend(recent)
-    return system, messages`,
+    return system, messages
+
+system, messages = assemble_window(
+    "You are a coding assistant.",
+    memories=["User deploys to production on Fridays.",
+              "User prefers pnpm over npm."],
+    summary="Earlier we refactored the billing module and froze legacy/.",
+    recent=[{"role": "user", "content": "Now update the deploy docs."}],
+)
+print(f"window = {count(messages, system)} tokens")
+print(system)   # note the fenced, labeled memory block`,
       explanation:
         "Three structural choices to notice: memories live in the *system* prompt (clearly fenced and labeled untrusted — the security half of this arrives in Lesson 5); the summary is injected as a user/assistant exchange so the model treats it as established conversation; and recent turns go in verbatim, last. Stable content first also preserves your prompt-cache prefix from Module 1.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `from openai import OpenAI
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai tiktoken
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+from openai import OpenAI
 import tiktoken
 
 client = OpenAI()
@@ -152,7 +186,17 @@ def assemble_window(system_prompt: str, memories: list[str],
         messages.append({"role": "assistant", "content":
             "Understood. Continuing from that summary."})
     messages.extend(recent)
-    return instructions, messages`,
+    return instructions, messages
+
+instructions, messages = assemble_window(
+    "You are a coding assistant.",
+    memories=["User deploys to production on Fridays.",
+              "User prefers pnpm over npm."],
+    summary="Earlier we refactored the billing module and froze legacy/.",
+    recent=[{"role": "user", "content": "Now update the deploy docs."}],
+)
+print(f"window ≈ {count(messages, instructions)} tokens (tiktoken estimate)")
+print(instructions)   # note the fenced, labeled memory block`,
           explanation:
             "Same allocator, one honest difference: Anthropic ships an exact server-side counter (`client.messages.count_tokens`), OpenAI doesn't — so the budget check runs on a local `tiktoken` estimate (approximate for the newest models) and you correct drift against `resp.usage.input_tokens` after each real call. The system prompt travels as `instructions=` on `client.responses.create` instead of a `system=` parameter; everything structural — fencing, ordering, cache-friendly stable prefix — is identical.",
         },
@@ -162,7 +206,8 @@ def assemble_window(system_prompt: str, memories: list[str],
       type: "code",
       language: "python",
       title: "the biggest budget leak: verbose tool results",
-      code: `MAX_TOOL_RESULT_CHARS = 4_000
+      code: `# Colab cell 2 — run cell 1 first (it defines client and MODEL).
+MAX_TOOL_RESULT_CHARS = 4_000
 
 def digest_tool_result(name: str, raw: str) -> str:
     """Tool results are the #1 context hog. Truncate mechanically, or
@@ -179,14 +224,22 @@ def digest_tool_result(name: str, raw: str) -> str:
         digest = next(b.text for b in resp.content if b.type == "text")
         return "[digested from oversized output]\\n" + digest
     # structured/unknown: hard truncate, but SAY SO — silent loss misleads
-    return raw[:MAX_TOOL_RESULT_CHARS] + "\\n[truncated: output exceeded limit]"`,
+    return raw[:MAX_TOOL_RESULT_CHARS] + "\\n[truncated: output exceeded limit]"
+
+# demo: a 15K-char fake log through both paths
+fake_log = "\\n".join(f"2026-07-17T10:00:00 INFO worker-{i} heartbeat ok"
+                     for i in range(300))
+print(len(digest_tool_result("query_metrics", fake_log)),
+      "chars after the hard-truncate path")
+print(digest_tool_result("read_file", fake_log)[:200])   # LLM-digest path`,
       explanation:
         "One `read_file` on a big log can dwarf the entire conversation. The cardinal rule when shrinking anything: **mark the seam**. A model that knows output was truncated can ask for more or narrow its query; a model given silently amputated data reasons confidently from a fragment.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `MAX_TOOL_RESULT_CHARS = 4_000
+          code: `# Colab cell 2 — run cell 1 first (it defines client and MODEL).
+MAX_TOOL_RESULT_CHARS = 4_000
 
 def digest_tool_result(name: str, raw: str) -> str:
     """Tool results are the #1 context hog. Truncate mechanically, or
@@ -203,7 +256,14 @@ def digest_tool_result(name: str, raw: str) -> str:
         )
         return "[digested from oversized output]\\n" + resp.output_text
     # structured/unknown: hard truncate, but SAY SO — silent loss misleads
-    return raw[:MAX_TOOL_RESULT_CHARS] + "\\n[truncated: output exceeded limit]"`,
+    return raw[:MAX_TOOL_RESULT_CHARS] + "\\n[truncated: output exceeded limit]"
+
+# demo: a 15K-char fake log through both paths
+fake_log = "\\n".join(f"2026-07-17T10:00:00 INFO worker-{i} heartbeat ok"
+                     for i in range(300))
+print(len(digest_tool_result("query_metrics", fake_log)),
+      "chars after the hard-truncate path")
+print(digest_tool_result("read_file", fake_log)[:200])   # LLM-digest path`,
           explanation:
             "Two SDK-level shifts: `resp.output_text` replaces walking content blocks, and there's no required output cap — Anthropic's `max_tokens` is mandatory, OpenAI's is optional, so the length constraint moves into the prompt itself. The digest-vs-truncate policy and the marked seam are identical.",
         },

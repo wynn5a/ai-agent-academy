@@ -30,7 +30,67 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "write path: dedupe + contradiction resolution",
-      code: `DUP_THRESHOLD = 0.90      # near-identical: skip
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic sentence-transformers
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import sqlite3, json, time
+import numpy as np
+import anthropic
+from sentence_transformers import SentenceTransformer
+
+client = anthropic.Anthropic()
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Lesson 3's MemoryStore, unchanged, so this notebook stands alone.
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS memories (
+    id            INTEGER PRIMARY KEY,
+    fact          TEXT NOT NULL,
+    provenance    TEXT NOT NULL,
+    created_at    REAL NOT NULL,
+    importance    REAL NOT NULL DEFAULT 0.5,
+    superseded_by INTEGER,
+    embedding     TEXT NOT NULL
+);
+"""
+
+class MemoryStore:
+    def __init__(self, path: str = "memory.db"):
+        self.db = sqlite3.connect(path)
+        self.db.executescript(SCHEMA)
+
+    def add(self, fact: str, provenance: dict, importance: float = 0.5) -> int:
+        vec = encoder.encode(fact, normalize_embeddings=True)
+        cur = self.db.execute(
+            "INSERT INTO memories (fact, provenance, created_at, importance, embedding) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (fact, json.dumps(provenance), time.time(), importance,
+             json.dumps(vec.tolist())),
+        )
+        self.db.commit()
+        return cur.lastrowid
+
+    def all_active(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, fact, provenance, created_at, importance, embedding "
+            "FROM memories WHERE superseded_by IS NULL").fetchall()
+        return [{"id": r[0], "fact": r[1], "provenance": json.loads(r[2]),
+                 "created_at": r[3], "importance": r[4],
+                 "vec": np.array(json.loads(r[5]))} for r in rows]
+
+def log_conflict(old: dict, new_id: int) -> None:
+    print(f"[conflict] memory #{old['id']} superseded by #{new_id}")
+
+DUP_THRESHOLD = 0.90      # near-identical: skip
 TOPIC_THRESHOLD = 0.70    # same topic: check for contradiction
 
 def judge_contradiction(new_fact: str, old_fact: str) -> str:
@@ -62,14 +122,82 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
                 return f"stored #{new_id}, superseded #{mem['id']} (conflict flagged)"
     new_id = store.add(candidate["fact"], candidate["provenance"],
                        candidate["importance"])
-    return f"stored #{new_id}"`,
+    return f"stored #{new_id}"
+
+# demo: the three zones — store, skip-duplicate, supersede-on-contradiction
+store = MemoryStore(":memory:")
+prov = {"type": "session_extraction", "source_type": "user_direct", "session": "demo"}
+for fact in ["User deploys to production on Fridays.",
+             "User deploys to production on Fridays.",
+             "User no longer deploys on Fridays; deploys moved to Wednesdays."]:
+    print(write_fact(store, {"fact": fact, "provenance": prov, "importance": 0.7}))`,
       explanation:
-        'The two thresholds carve embedding space into three zones: duplicate (skip), same-topic (escalate to the LLM judge — cosine similarity alone cannot tell "deploys on Fridays" from "no longer deploys on Fridays"; they embed *close*), and unrelated (store). Superseding rather than deleting preserves history: if the resolution was wrong, the evidence still exists.',
+        'The two thresholds carve embedding space into three zones: duplicate (skip), same-topic (escalate to the LLM judge — cosine similarity alone cannot tell "deploys on Fridays" from "no longer deploys on Fridays"; they embed *close*), and unrelated (store). Superseding rather than deleting preserves history: if the resolution was wrong, the evidence still exists. The store and encoder at the top repeat lesson 3\'s fixture so this notebook stands alone, and the in-memory demo walks all three zones in order.',
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `DUP_THRESHOLD = 0.90      # near-identical: skip
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai sentence-transformers
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import sqlite3, json, time
+import numpy as np
+from openai import OpenAI
+from sentence_transformers import SentenceTransformer
+
+client = OpenAI()
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Lesson 3's MemoryStore, unchanged, so this notebook stands alone.
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS memories (
+    id            INTEGER PRIMARY KEY,
+    fact          TEXT NOT NULL,
+    provenance    TEXT NOT NULL,
+    created_at    REAL NOT NULL,
+    importance    REAL NOT NULL DEFAULT 0.5,
+    superseded_by INTEGER,
+    embedding     TEXT NOT NULL
+);
+"""
+
+class MemoryStore:
+    def __init__(self, path: str = "memory.db"):
+        self.db = sqlite3.connect(path)
+        self.db.executescript(SCHEMA)
+
+    def add(self, fact: str, provenance: dict, importance: float = 0.5) -> int:
+        vec = encoder.encode(fact, normalize_embeddings=True)
+        cur = self.db.execute(
+            "INSERT INTO memories (fact, provenance, created_at, importance, embedding) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (fact, json.dumps(provenance), time.time(), importance,
+             json.dumps(vec.tolist())),
+        )
+        self.db.commit()
+        return cur.lastrowid
+
+    def all_active(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT id, fact, provenance, created_at, importance, embedding "
+            "FROM memories WHERE superseded_by IS NULL").fetchall()
+        return [{"id": r[0], "fact": r[1], "provenance": json.loads(r[2]),
+                 "created_at": r[3], "importance": r[4],
+                 "vec": np.array(json.loads(r[5]))} for r in rows]
+
+def log_conflict(old: dict, new_id: int) -> None:
+    print(f"[conflict] memory #{old['id']} superseded by #{new_id}")
+
+DUP_THRESHOLD = 0.90      # near-identical: skip
 TOPIC_THRESHOLD = 0.70    # same topic: check for contradiction
 
 def judge_contradiction(new_fact: str, old_fact: str) -> str:
@@ -100,7 +228,15 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
                 return f"stored #{new_id}, superseded #{mem['id']} (conflict flagged)"
     new_id = store.add(candidate["fact"], candidate["provenance"],
                        candidate["importance"])
-    return f"stored #{new_id}"`,
+    return f"stored #{new_id}"
+
+# demo: the three zones — store, skip-duplicate, supersede-on-contradiction
+store = MemoryStore(":memory:")
+prov = {"type": "session_extraction", "source_type": "user_direct", "session": "demo"}
+for fact in ["User deploys to production on Fridays.",
+             "User deploys to production on Fridays.",
+             "User no longer deploys on Fridays; deploys moved to Wednesdays."]:
+    print(write_fact(store, {"fact": fact, "provenance": prov, "importance": 0.7}))`,
           explanation:
             "`write_fact` is provider-neutral — it only touches the embedding encoder and SQLite — so the entire gauntlet ports unchanged. Only the judge call differs: `responses.create` with `resp.output_text` instead of `messages.create` and content blocks, and no required output cap (Anthropic's `max_tokens=10` forces terseness at the API level; here the one-word constraint lives in the prompt).",
         },
@@ -191,9 +327,8 @@ def write_fact(store: MemoryStore, candidate: dict) -> str:
       type: "code",
       language: "python",
       title: "read path: blended recall scoring, stingy top-k",
-      code: `import time
-import numpy as np
-
+      code: `# Colab cell 2 — run cell 1 first (it defines store, encoder, and the
+# demo's three writes — recall below draws from that store).
 W_RELEVANCE, W_RECENCY, W_IMPORTANCE = 0.60, 0.25, 0.15
 HALF_LIFE_DAYS = 30.0
 
@@ -214,7 +349,8 @@ def recall(store: MemoryStore, query_text: str, k: int = 5,
     return [m for s, m in scored[:k] if s >= min_score]       # floor matters
 
 # injected via assemble_window() from Lesson 1 — fenced, labeled untrusted
-memories = [m["fact"] for m in recall(store, current_task_description)]`,
+memories = [m["fact"] for m in recall(store, "plan this week's production deploy")]
+print(memories)   # the Wednesday fact wins; the superseded Friday fact never appears`,
       explanation:
         "Two safety valves beyond the blend: a hard **top-k cap** (five facts, not fifty) and a **minimum-score floor** — if nothing clears the bar, inject *nothing*. An empty memory block is strictly better than a misleading one. Tune the weights against your Lab 04 demo script, and log every recall decision: 'why did the agent bring *that* up?' should always be answerable from logs.",
     },
