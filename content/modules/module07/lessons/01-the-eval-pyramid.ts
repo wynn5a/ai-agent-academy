@@ -66,9 +66,38 @@ export const lesson01: Lesson = {
       type: "code",
       language: "python",
       title: "assertion-style evals with pytest",
-      code: `import json
+      code: `# Colab cell — pure Python + pytest, no API key needed. A stub agent
+# stands in for your real one so the assertion evals actually run.
+!pip install -q pytest
+
+import json
+from dataclasses import dataclass
+
 import pytest
-from my_agent import run_agent   # returns a Result with .text, .tool_calls, .usage
+
+
+@dataclass
+class ToolCall:
+    name: str
+
+
+@dataclass
+class Result:
+    text: str
+    tool_calls: list
+
+
+def run_agent(prompt: str) -> Result:
+    # stub router standing in for your real agent (returns .text/.tool_calls)
+    p = prompt.lower()
+    if "refund" in p and "$900" in prompt:
+        return Result("Escalating to a human.", [ToolCall("escalate_to_human")])
+    if "refund" in p:
+        return Result("Refund issued.", [ToolCall("issue_refund")])
+    if "classify" in p:
+        return Result('{"category": "billing"}', [])
+    return Result("ok", [])
+
 
 # A "golden" dataset: inputs paired with checkable expectations.
 CASES = [
@@ -102,9 +131,18 @@ def test_tool_selection(case):
 def test_output_is_valid_json_when_structured():
     result = run_agent("Classify ticket: my card was double charged.")
     parsed = json.loads(result.text)          # raises if malformed
-    assert parsed["category"] in {"billing", "bug", "feature_request", "other"}`,
+    assert parsed["category"] in {"billing", "bug", "feature_request", "other"}
+
+
+# pytest discovers these automatically (\`pytest -q\`); here we call them
+# directly so the cell prints a green result:
+for case in CASES:
+    test_tool_selection(case)
+    print(f"PASS  test_tool_selection[{case['id']}]")
+test_output_is_valid_json_when_structured()
+print("PASS  test_output_is_valid_json_when_structured")`,
       explanation:
-        "These tests give you a green/red signal in seconds and cost nothing. Note the shape of a golden case: an input plus **checkable** expectations. Resist the urge to assert exact output strings — models phrase things differently across runs. Assert on structure, tool routing, and invariants, which are stable, not on prose, which is not.",
+        "These tests give you a green/red signal in seconds and cost nothing. Note the shape of a golden case: an input plus **checkable** expectations. Resist the urge to assert exact output strings — models phrase things differently across runs. Assert on structure, tool routing, and invariants, which are stable, not on prose, which is not. The stub `run_agent` lets you watch every assertion pass; swap in your real agent and the cases don't change.",
     },
     {
       type: "heading",
@@ -118,7 +156,8 @@ def test_output_is_valid_json_when_structured():
       type: "code",
       language: "python",
       title: "scoring both metrics over a run set",
-      code: `from dataclasses import dataclass
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+from dataclasses import dataclass
 
 @dataclass
 class RunScore:

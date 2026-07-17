@@ -28,20 +28,35 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "a regression suite that mixes assertions and judged answers",
-      code: `import json, pathlib
-from my_agent import run_agent
-from my_judge import run_judge, FAITHFULNESS_RUBRIC
+      code: `# Colab cell — pure Python, no key needed. Stub agent + judge stand in for
+# your real ones so the mixed-tier runner executes end to end.
+import json
+from collections import namedtuple
+
+Usage = namedtuple("Usage", "input_tokens output_tokens")
+ToolCall = namedtuple("ToolCall", "name")
+Result = namedtuple("Result", "text tool_calls usage")
+
+def run_agent(prompt: str) -> Result:                # stub for your real agent
+    if "cart" in prompt.lower():
+        return Result("Here is your cart.", [ToolCall("lookup_cart")], Usage(1200, 300))
+    return Result("Returns are accepted within 30 days.", [], Usage(1500, 400))
+
+FAITHFULNESS_RUBRIC = "PASS if the answer only states facts from context."
+def run_judge(text: str, rubric: str) -> str:        # stub for your real judge
+    return "pass" if "30 days" in text else "fail"
 
 # Each case declares HOW it should be scored, so the runner can mix tiers.
-# cases/*.json example:
-# {"id":"bug_412_empty_cart","prompt":"...","check":"assert",
-#  "must_call":"lookup_cart","must_not_call":"issue_refund"}
-# {"id":"bug_419_hallucinated_policy","prompt":"...","check":"judge",
-#  "rubric":"faithfulness"}
+# In production these live as cases/*.json; inlined here so the cell runs.
+CASES = [
+    {"id": "bug_412_empty_cart", "prompt": "Show my cart", "check": "assert",
+     "must_call": "lookup_cart", "must_not_call": "issue_refund"},
+    {"id": "bug_419_hallucinated_policy", "prompt": "What's the return policy?",
+     "check": "judge", "rubric": "faithfulness"},
+]
 
 def load_cases():
-    for path in sorted(pathlib.Path("cases").glob("*.json")):
-        yield json.loads(path.read_text())
+    return iter(CASES)
 
 # $/1M tokens at list — keep rates in one constant you can update
 PRICE = {"input": 3.00, "output": 15.00}          # claude-sonnet-5 list price
@@ -84,10 +99,12 @@ def main():
         print("failing cases:", ", ".join(failures))
     raise SystemExit(1 if failed else 0)   # non-zero fails the CI job
 
-if __name__ == "__main__":
-    main()`,
+try:
+    main()
+except SystemExit as e:
+    print(f"(in CI this exit code {e.code} gates the merge)")`,
       explanation:
-        "One command, mixed tiers, and a cost line in the output. The `raise SystemExit(1 ...)` is what makes it a real CI gate — a non-zero exit fails the pipeline job and blocks the merge. Storing cases as small JSON files means adding a regression is a one-file commit, and the diff makes the new coverage reviewable.",
+        "One command, mixed tiers, and a cost line in the output. The `raise SystemExit(1 ...)` is what makes it a real CI gate — a non-zero exit fails the pipeline job and blocks the merge (the demo catches it just to print the code cleanly). Storing cases as small JSON files means adding a regression is a one-file commit, and the diff makes the new coverage reviewable. Swap the two stubs for your real agent and judge and the runner is unchanged.",
     },
     {
       type: "heading",
@@ -153,7 +170,8 @@ jobs:
       language: "python",
       title:
         "before trusting a delta, check whether the intervals even separate",
-      code: `import math
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+import math
 
 def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     """Approximate 95% CI for a pass rate. Cheap gut-check before trusting a delta."""
@@ -177,7 +195,12 @@ def paired_sign_test(baseline_pass: list[bool], candidate_pass: list[bool]) -> d
     newly_passing = sum(not b and c for b, c in zip(baseline_pass, candidate_pass))
     newly_failing = sum(b and not c for b, c in zip(baseline_pass, candidate_pass))
     return {"newly_passing": newly_passing, "newly_failing": newly_failing,
-            "net": newly_passing - newly_failing}`,
+            "net": newly_passing - newly_failing}
+
+# same 50 cases scored under both versions -> count the flips directly:
+baseline_pass  = [True]*41 + [False]*9
+candidate_pass = [True]*40 + [False]*7 + [True]*3   # 3 newly pass, 1 flips the other way
+print(paired_sign_test(baseline_pass, candidate_pass))`,
       explanation:
         "Overlapping confidence intervals are the tell: don't ship on a delta the intervals can't distinguish from zero. The paired sign test is usually the more decisive tool in practice — a 3-newly-passing / 1-newly-failing split at n=50 is a much stronger and cheaper signal than the aggregate percentages alone, and it also forces you to look at *which* case newly failed, regardless of the net direction being positive.",
     },

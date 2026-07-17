@@ -30,15 +30,34 @@ export const lesson02: Lesson = {
       language: "python",
       title: "measuring judge-human agreement",
       provider: "claude",
-      code: `# Each labeled example: the case, the human verdict, and the agent output.
-# labels = [{"id":..., "output":..., "human": "pass"/"fail"}, ...]
-import json
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
 
 import anthropic
 
 client = anthropic.Anthropic()
-labels = json.load(open("labels.json"))          # your 30+ hand-labeled examples
-RUBRIC = open("rubric_faithfulness.md").read()   # anchored defs + pass/fail examples
+
+# In production these are your 30+ hand-labeled examples in labels.json and
+# an anchored rubric file; inlined here as tiny fixtures so the cell runs.
+labels = [
+    {"id": "grounded",   "output": "Your plan renews on the 1st, per your account page.", "human": "pass"},
+    {"id": "invented",   "output": "Your plan renews on the 15th and includes free flights.", "human": "fail"},
+    {"id": "abstained",  "output": "I don't see that detail in the provided context.", "human": "pass"},
+]
+RUBRIC = (
+    "You grade whether a support reply stays faithful to known account facts "
+    "(renewal date is the 1st; no travel perks). PASS if every claim is "
+    "supported or the reply abstains; FAIL if it invents any fact."
+)
 
 def run_judge(output: str, rubric: str) -> str:
     # Force a structured verdict via a tool schema (Module 1 pattern).
@@ -74,21 +93,44 @@ def agreement(labels: list[dict], rubric: str) -> float:
 
 rate = agreement(labels, RUBRIC)
 print(f"judge-human agreement: {rate:.0%}")
-assert rate >= 0.85, "rubric not trustworthy yet — tune and re-measure"`,
+# In your real suite make this a gate: assert rate >= 0.85 so a judge below
+# your bar can never be promoted to production.
+print("trustworthy" if rate >= 0.85 else "tune the rubric and re-measure")`,
       explanation:
-        "Two things make this real: forcing a **structured verdict** so parsing never fails (the forced-tool-call trick from Module 1), and treating the agreement number as a gate. The `assert` at the end is the whole point — a judge below your bar does not get promoted to production. When you later change the rubric, you have changed the instrument, so you re-run this measurement. Note the model choice: a cheap, fast tier is the right default for a judge — and picking a judge from a **different provider or family** than the system under test blunts the self-preference bias named below.",
+        "Two things make this real: forcing a **structured verdict** so parsing never fails (the forced-tool-call trick from Module 1), and treating the agreement number as a gate. In your real suite the last line is an `assert rate >= 0.85` — a judge below your bar does not get promoted to production; it's a `print` here only so the demo cell shows the number instead of raising. When you later change the rubric, you have changed the instrument, so you re-run this measurement. Note the model choice: a cheap, fast tier is the right default for a judge — and picking a judge from a **different provider or family** than the system under test blunts the self-preference bias named below.",
       variants: [
         {
           provider: "openai",
-          code: `# Each labeled example: the case, the human verdict, and the agent output.
-# labels = [{"id":..., "output":..., "human": "pass"/"fail"}, ...]
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
 import json
 
 from openai import OpenAI
 
 client = OpenAI()
-labels = json.load(open("labels.json"))          # your 30+ hand-labeled examples
-RUBRIC = open("rubric_faithfulness.md").read()   # anchored defs + pass/fail examples
+
+# In production these are your 30+ hand-labeled examples in labels.json and
+# an anchored rubric file; inlined here as tiny fixtures so the cell runs.
+labels = [
+    {"id": "grounded",   "output": "Your plan renews on the 1st, per your account page.", "human": "pass"},
+    {"id": "invented",   "output": "Your plan renews on the 15th and includes free flights.", "human": "fail"},
+    {"id": "abstained",  "output": "I don't see that detail in the provided context.", "human": "pass"},
+]
+RUBRIC = (
+    "You grade whether a support reply stays faithful to known account facts "
+    "(renewal date is the 1st; no travel perks). PASS if every claim is "
+    "supported or the reply abstains; FAIL if it invents any fact."
+)
 
 VERDICT_SCHEMA = {
     "type": "object",
@@ -122,9 +164,11 @@ def agreement(labels: list[dict], rubric: str) -> float:
 
 rate = agreement(labels, RUBRIC)
 print(f"judge-human agreement: {rate:.0%}")
-assert rate >= 0.85, "rubric not trustworthy yet — tune and re-measure"`,
+# In your real suite make this a gate: assert rate >= 0.85 so a judge below
+# your bar can never be promoted to production.
+print("trustworthy" if rate >= 0.85 else "tune the rubric and re-measure")`,
           explanation:
-            "Same gate, different structured-output plumbing: the Responses API pins the verdict to a strict JSON schema via `text.format`, so `json.loads(resp.output_text)` never sees free-form prose — the role Anthropic's forced tool call plays on the Claude tab. Bonus of having both tabs: if your agent under test runs on Claude, judging it with an OpenAI model (or vice versa) blunts self-preference bias — the judge has no family loyalty to the answers it grades.",
+            "Same gate, different structured-output plumbing: the Responses API pins the verdict to a strict JSON schema via `text.format`, so `json.loads(resp.output_text)` never sees free-form prose — the role Anthropic's forced tool call plays on the Claude tab. In your real suite the last line is an `assert rate >= 0.85`; it's a `print` here so the demo shows the number. Bonus of having both tabs: if your agent under test runs on Claude, judging it with an OpenAI model (or vice versa) blunts self-preference bias — the judge has no family loyalty to the answers it grades.",
         },
       ],
     },
@@ -150,7 +194,10 @@ assert rate >= 0.85, "rubric not trustworthy yet — tune and re-measure"`,
       type: "code",
       language: "python",
       title: "pairwise comparison with position-bias control",
-      code: `import random
+      code: `# Colab cell — pure Python, no key needed. Fake judges make the
+# position-bias control visible without spending a token.
+import random
+from collections import namedtuple
 
 def pairwise(judge_call, prompt: str, answer_a: str, answer_b: str) -> str:
     \"\"\"Return 'A', 'B', or 'tie', controlling for position bias.\"\"\"
@@ -177,9 +224,26 @@ def win_rate(cases, judge_call, candidate, baseline) -> float:
         elif verdict == "tie":
             ties += 1
     # Ties count as half; a fair coin lands near 0.5.
-    return (wins + 0.5 * ties) / len(cases)`,
+    return (wins + 0.5 * ties) / len(cases)
+
+
+# A position-biased judge (always picks whatever is shown first) flips with
+# order, so pairwise correctly scores it a tie -- "no signal":
+biased = lambda prompt, first, second: "first"
+print("position-biased judge ->", pairwise(biased, "q", "answer A", "answer B"))
+
+# A quality judge (prefers the more detailed answer) survives both orders:
+quality = lambda prompt, first, second: "first" if len(first) >= len(second) else "second"
+print("quality judge        ->", pairwise(quality, "q", "a detailed answer", "short"))
+
+# win_rate over a few cases, candidate more detailed than baseline:
+Case = namedtuple("Case", "prompt")
+cases = [Case("q1"), Case("q2"), Case("q3")]
+candidate = {c: "a thorough, detailed answer" for c in cases}
+baseline = {c: "brief" for c in cases}
+print("candidate win rate   ->", win_rate(cases, quality, candidate, baseline))`,
       explanation:
-        "The core trick: present each pair in both orders and only count a decisive verdict when the judge picks the **same original answer** regardless of position. If flipping the order flips the answer, the judge was reacting to position, not quality — so you score it a tie. A candidate prompt that clears ~0.55+ win rate against your baseline across a decent-sized set is real signal; hovering at 0.5 is not.",
+        "The core trick: present each pair in both orders and only count a decisive verdict when the judge picks the **same original answer** regardless of position. If flipping the order flips the answer, the judge was reacting to position, not quality — so you score it a tie. The demo makes this concrete with no API cost: the always-picks-first judge scores `tie` (its bias is caught), while the quality judge yields a decisive `A` and a 1.0 win rate. A candidate prompt that clears ~0.55+ win rate against your baseline across a decent-sized set is real signal; hovering at 0.5 is not.",
     },
     {
       type: "heading",
@@ -194,7 +258,9 @@ def win_rate(cases, judge_call, candidate, baseline) -> float:
       language: "python",
       title: "a decomposed rubric beats a holistic score",
       provider: "claude",
-      code: `# Holistic — mushy, drifts, disagreement is unexplainable:
+      code: `# Colab cell — run block 1 first (it sets up client with your key).
+
+# Holistic — mushy, drifts, disagreement is unexplainable:
 BAD_RUBRIC = "You are an expert evaluator. Rate helpfulness from 1 to 10."
 
 # Decomposed — each field is independently checkable and debuggable:
@@ -239,13 +305,20 @@ def run_decomposed_judge(reply: str, context: str) -> dict:
     verdict["pass"] = all(verdict[k] for k in
                           ("answers_question", "names_next_step",
                            "no_unsupported_claims"))
-    return verdict`,
+    return verdict
+
+
+print(run_decomposed_judge(
+    reply="Your plan renews on the 1st. I've logged your request; support "
+          "will follow up within one business day.",
+    context="Account: plan renews on the 1st. No travel perks."))`,
       explanation:
         "The `evidence` field is not decoration — forcing the judge to cite the sentence it's grading on makes disagreements auditable: when a human reviewer disputes a verdict, they check the cited evidence instead of re-litigating a fuzzy 1–10 impression. Notice each criterion is small enough that a human could grade it the same way every time — that's the bar a rubric criterion should clear before you trust a model to grade it.",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell — run block 1 first (it sets up client with your key).
+import json
 
 # Holistic — mushy, drifts, disagreement is unexplainable:
 BAD_RUBRIC = "You are an expert evaluator. Rate helpfulness from 1 to 10."
@@ -290,7 +363,13 @@ def run_decomposed_judge(reply: str, context: str) -> dict:
     verdict["pass"] = all(verdict[k] for k in
                           ("answers_question", "names_next_step",
                            "no_unsupported_claims"))
-    return verdict`,
+    return verdict
+
+
+print(run_decomposed_judge(
+    reply="Your plan renews on the 1st. I've logged your request; support "
+          "will follow up within one business day.",
+    context="Account: plan renews on the 1st. No travel perks."))`,
           explanation:
             "Identical rubric, identical combination rule — only the structured-verdict plumbing differs: `strict: True` on the `text.format` JSON schema plays the role the forced tool call plays on the Claude tab. That's the takeaway of seeing both: rubric design is provider-portable; only the last mile of verdict extraction is SDK-specific.",
         },

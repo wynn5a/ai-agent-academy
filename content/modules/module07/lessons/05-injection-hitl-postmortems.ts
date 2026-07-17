@@ -91,7 +91,8 @@ export const lesson05: Lesson = {
       type: "code",
       language: "python",
       title: "tool gating on tainted context",
-      code: `class ContextTaint:
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+class ContextTaint:
     """Tracks whether untrusted content has entered this turn's context."""
     def __init__(self):
         self.tainted = False
@@ -103,6 +104,9 @@ export const lesson05: Lesson = {
 
 RESTRICTED_WHEN_TAINTED = {"send_email", "execute_code", "issue_refund", "http_post"}
 
+def run_tool_impl(name: str, args: dict) -> str:     # stub for your real tools
+    return f"ran {name}({args})"
+
 def execute_tool(name: str, args: dict, taint: ContextTaint):
     if taint.tainted and name in RESTRICTED_WHEN_TAINTED:
         return (f"'{name}' is disabled this turn: untrusted content from "
@@ -110,11 +114,15 @@ def execute_tool(name: str, args: dict, taint: ContextTaint):
                 "fetching that content, or request human approval.", True)
     return run_tool_impl(name, args), False
 
-# wherever a tool result or fetched document is appended to context:
-if tool_name in {"fetch_url", "read_email", "read_file"}:
-    taint.mark(tool_name)`,
+# demo: the same send_email call is fine before untrusted content is read,
+# then structurally blocked the moment a fetched page enters the context.
+taint = ContextTaint()
+print("clean   ->", execute_tool("send_email", {"to": "ok@co"}, taint))
+taint.mark("fetched_url")   # the agent reads an untrusted web page mid-task
+print("tainted ->", execute_tool("send_email", {"to": "ok@co"}, taint))
+print("read-ok ->", execute_tool("search_orders", {"q": "late"}, taint))`,
       explanation:
-        "The gate doesn't try to detect *whether* an injection succeeded — that's the losing blocklist game from above. It structurally removes the dangerous tools from the model's reach the moment any untrusted source is read, for the rest of that turn, regardless of what the model was talked into wanting. The cost is real: a legitimate task that both reads an email and needs to send one now requires an extra step — human approval, or a fresh turn that re-plans without the tainted read — and that friction is the point, not a bug to optimize away.",
+        "The gate doesn't try to detect *whether* an injection succeeded — that's the losing blocklist game from above. It structurally removes the dangerous tools from the model's reach the moment any untrusted source is read, for the rest of that turn, regardless of what the model was talked into wanting. The demo makes the switch visible: the identical `send_email` call succeeds `clean` and returns an `is_error` block once `tainted`, while a non-restricted read tool stays available. The cost is real: a legitimate task that both reads an email and needs to send one now requires an extra step — human approval, or a fresh turn that re-plans without the tainted read — and that friction is the point, not a bug to optimize away.",
     },
     {
       type: "callout",
@@ -133,9 +141,12 @@ if tool_name in {"fetch_url", "read_email", "read_file"}:
       type: "code",
       language: "python",
       title: "an HITL approval gate for a destructive tool",
-      code: `import time, json, uuid, pathlib
+      code: `# Colab cell — pure Python, no key needed. Writes to ./queue and
+# ./audit_log.jsonl in the Colab filesystem.
+import time, json, uuid, pathlib
 
 AUDIT = pathlib.Path("audit_log.jsonl")
+pathlib.Path("queue").mkdir(exist_ok=True)
 
 def audit(event: dict):
     event["ts"] = time.time()
@@ -171,7 +182,19 @@ def execute_if_approved(rid: str, do_it, timeout_s: int = 3600):
         time.sleep(5)
     # Timeout => default reject. Fail closed, ALWAYS.
     audit({"event": "timed_out_default_reject", "id": rid})
-    return None`,
+    return None
+
+# demo: queue an irreversible action, simulate a human approving it (the CLI
+# in the next block is the real approver), then execute.
+rid = request_approval("issue_refund", "order #A123",
+                       "customer reported broken item", 40.0)
+print("queued:", rid[:8])
+rec_path = pathlib.Path("queue") / f"{rid}.json"
+rec = json.loads(rec_path.read_text())
+rec["status"] = "approved"                 # stands in for the human's click
+rec_path.write_text(json.dumps(rec))
+print("executed ->", execute_if_approved(rid, lambda: "refund sent", timeout_s=5))
+print("audit tail ->", AUDIT.read_text().strip().splitlines()[-1])`,
       explanation:
         "Three non-negotiables are baked in: the action never runs without an explicit `approved` status, every state transition is written to an append-only audit log, and the timeout path defaults to reject rather than execute. The `reason` and `cost_usd` fields exist so the approver has decision-ready context. This is the layer that saves you when injection defeats everything upstream.",
     },
@@ -179,7 +202,9 @@ def execute_if_approved(rid: str, do_it, timeout_s: int = 3600):
       type: "code",
       language: "python",
       title: "the approve/reject CLI the human uses",
-      code: `import json, sys, pathlib
+      code: `# Colab cell — run the previous block first (it defines request_approval
+# and the ./queue dir). Pure Python, no key needed.
+import json, sys, pathlib
 
 QUEUE = pathlib.Path("queue")
 
@@ -202,12 +227,17 @@ def decide(rid_prefix: str, decision: str):
             return
     print("no matching pending request")
 
-if __name__ == "__main__":
-    cmd = sys.argv[1]
-    if cmd == "list":
-        list_pending()
-    elif cmd in ("approve", "reject"):
-        decide(sys.argv[2], "approved" if cmd == "approve" else "rejected")`,
+# On a real terminal you'd dispatch on sys.argv:
+#   python approve_cli.py list
+#   python approve_cli.py reject 1a2b3c4d
+# In a notebook there's no argv, so we call the functions directly to see it:
+rid = request_approval("delete_account", "user #77",
+                       "user asked to close their account", 0.0)
+print("pending queue:")
+list_pending()
+decide(rid[:8], "rejected")
+print("after decision:")
+list_pending()          # the rejected request no longer appears as pending`,
       explanation:
         "The whole design goal of this CLI is the ten-second decision: `list` shows action, target, cost, and reason on one line so the human has everything needed without hunting. Approving flips one field the worker is polling. In a real system this is a web UI with the full diff or email body shown, but the CLI captures the essential contract: humans decide, the system executes only on an explicit yes.",
     },

@@ -38,8 +38,10 @@ export const lesson04: Lesson = {
       language: "python",
       title: "tracing an agent run with Langfuse (decorator + spans)",
       provider: "claude",
-      code: `# Patterns shown are the stable, documented shape; confirm signatures
-# against the current Langfuse docs for your installed version.
+      code: `# Reference skeleton — needs 'pip install langfuse', Langfuse credentials,
+# and a running model client (client, SCHEMAS, run_tools). It's here to
+# read and adapt, not to run standalone in Colab. Patterns shown are the
+# stable, documented shape; confirm signatures against current Langfuse docs.
 from langfuse import observe, get_client
 
 langfuse = get_client()
@@ -80,8 +82,10 @@ def call_model(messages):
       variants: [
         {
           provider: "openai",
-          code: `# Patterns shown are the stable, documented shape; confirm signatures
-# against the current Langfuse docs for your installed version.
+          code: `# Reference skeleton — needs 'pip install langfuse', Langfuse credentials,
+# and a running model client (client, SCHEMAS, run_tools). It's here to
+# read and adapt, not to run standalone in Colab. Patterns shown are the
+# stable, documented shape; confirm signatures against current Langfuse docs.
 from langfuse import observe, get_client
 
 langfuse = get_client()
@@ -135,8 +139,10 @@ def call_model(messages):
       type: "code",
       language: "python",
       title: "structured logs correlated by trace_id",
-      code: `import json, logging, time
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+import json, logging, sys, time
 
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
 log = logging.getLogger("agent")
 
 def log_event(trace_id: str, span: str, **fields):
@@ -155,9 +161,18 @@ def run_tool(trace_id, name, args, fn):
     except Exception as e:
         log_event(trace_id, "tool_call", tool=name, ok=False,
                   error=type(e).__name__, latency_ms=round((time.time() - start) * 1000))
-        raise`,
+        raise
+
+# demo: one successful tool call and one failing one, each a JSON log line
+run_tool("trace-abc123", "search_orders", {"q": "late"}, lambda q: "3 results")
+def boom():
+    raise RuntimeError("upstream 500")
+try:
+    run_tool("trace-abc123", "charge_card", {}, boom)
+except RuntimeError:
+    pass   # re-raised after logging, as it should be`,
       explanation:
-        "The key discipline is one JSON object per line, always carrying the `trace_id` so logs and traces reconcile. With this you can answer operational questions — error rate per tool, p95 latency, cost per user per day — by querying logs, even when the fancy UI is unavailable. Never log secrets or full user PII into these records.",
+        "The key discipline is one JSON object per line, always carrying the `trace_id` so logs and traces reconcile. With this you can answer operational questions — error rate per tool, p95 latency, cost per user per day — by querying logs, even when the fancy UI is unavailable. Run the demo and you'll see two JSON lines sharing one `trace_id` — one `ok:true`, one `ok:false` with the error type — exactly what you'd grep to compute per-tool error rates. Never log secrets or full user PII into these records.",
     },
     {
       type: "heading",
