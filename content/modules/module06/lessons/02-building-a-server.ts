@@ -39,16 +39,28 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "a FastMCP server: tools",
-      code: `# server.py — official 'mcp' Python package, FastMCP style
+      code: `# Colab cell 1 — run once. Installs the official 'mcp' SDK. No external
+# API needed: the tool queries an in-memory store so you can see it run.
+!pip install -q mcp
+
 import os
 
-import httpx
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("orders-server")
 
-API_BASE = "https://api.example.internal"
-API_KEY = os.environ["ORDERS_API_KEY"]     # server-side; model never sees it
+# Server-side secret: read from the environment, used only inside tool
+# bodies, and NEVER placed in a schema, description, or response — the
+# model never sees it. A real server passes this to httpx; here we query
+# an in-memory store instead so the cell runs offline.
+API_KEY = os.environ.get("ORDERS_API_KEY", "dev-key-not-real")
+
+ORDERS = [
+    {"id": "A1001", "customer": "Acme",     "status": "open",      "total": 250, "note": "late delivery reported"},
+    {"id": "A1002", "customer": "Globex",   "status": "shipped",   "total": 80,  "note": "on time"},
+    {"id": "A1003", "customer": "Initech",  "status": "open",      "total": 420, "note": "late delivery, wants refund"},
+    {"id": "A1004", "customer": "Umbrella", "status": "cancelled", "total": 15,  "note": "duplicate order"},
+]
 
 
 @mcp.tool()
@@ -59,33 +71,40 @@ def search_orders(query: str, status: str = "open", limit: int = 10) -> str:
     Use for questions about order history or finding a specific order.
     Do NOT use for refunds or edits -- this tool is read-only.
     """
-    resp = httpx.get(
-        f"{API_BASE}/orders",
-        params={"q": query, "status": status, "limit": limit},
-        headers={"Authorization": f"Bearer {API_KEY}"},
-        timeout=10.0,
-    )
-    if resp.status_code == 401:
-        return ("Error: orders API rejected credentials. The server's "
-                "ORDERS_API_KEY is missing or expired -- tell the user "
-                "to check server configuration. Do not retry.")
-    resp.raise_for_status()
-    orders = resp.json()["orders"]
+    if status not in {"open", "shipped", "cancelled"}:
+        # instructive error the model can act on -- not a stack trace
+        return (f"Error: unknown status {status!r}. Valid values: "
+                "open, shipped, cancelled.")
+    q = query.lower()
+    hits = [o for o in ORDERS
+            if o["status"] == status and q in o["note"].lower()][:limit]
     lines = [f"{o['id']} | {o['customer']} | {o['status']} | {o['total']}"
-             for o in orders]
+             for o in hits]
     return "\\n".join(lines) if lines else "No orders matched."
 
 
-if __name__ == "__main__":
-    mcp.run()        # stdio transport by default`,
+# In production, mcp.run() serves the server over stdio and a host spawns it;
+# in Colab that would block forever. Because @mcp.tool() leaves the function
+# a normal callable, we invoke it directly to see the EXACT text the model
+# would receive as the tool result:
+print(search_orders("late delivery", status="open"))
+print("--- unknown status ---")
+print(search_orders("late delivery", status="pending"))`,
       explanation:
-        "FastMCP derives everything from the function: the **name** from the function name, the **input schema** from type hints (with defaults becoming optional parameters), and the **description** from the docstring. That docstring is being read by a model, not a human — note it states purpose, what's returned, when to use it, and when *not* to. The 401 branch returns an instructive string instead of raising: the model can act on 'tell the user, do not retry'; it can't act on a stack trace.",
+        "FastMCP derives everything from the function: the **name** from the function name, the **input schema** from type hints (with defaults becoming optional parameters), and the **description** from the docstring. That docstring is being read by a model, not a human — note it states purpose, what's returned, when to use it, and when *not* to. The invalid-status branch returns an instructive string instead of raising: the model can act on 'valid values are X, Y, Z'; it can't act on a stack trace. The demo calls the tool directly so you see its output; a real host would reach it over the protocol (Lesson 3) — either way the returned text is identical. Swap the in-memory `ORDERS` for an `httpx` call using `API_KEY` and nothing else changes.",
     },
     {
       type: "code",
       language: "python",
       title: "the same server: resources and prompts",
-      code: `@mcp.resource("orders://status-codes")
+      code: `# Colab cell 2 — run cell 1 first (it defines mcp and ORDERS).
+def fetch_recent(customer_id: str) -> str:     # stub for your real API call
+    hits = [o for o in ORDERS if o["customer"].lower() == customer_id.lower()]
+    return "\\n".join(f"{o['id']} | {o['status']} | {o['total']}"
+                      for o in hits) or f"No orders for {customer_id!r}."
+
+
+@mcp.resource("orders://status-codes")
 def status_codes() -> str:
     """Reference: every order status code and its meaning."""
     return ("open: placed, not yet shipped\\n"
@@ -105,9 +124,15 @@ def order_investigation(order_id: str) -> str:
     return (f"Investigate order {order_id}. Steps: (1) fetch the order "
             f"and its status history; (2) check shipping events; "
             f"(3) summarize what went wrong and draft a customer reply. "
-            f"Cite specific timestamps.")`,
+            f"Cite specific timestamps.")
+
+
+# each primitive is a normal callable too — see what each returns:
+print("[resource] status_codes:\\n" + status_codes())
+print("\\n[resource] recent_orders('Acme'):\\n" + recent_orders("Acme"))
+print("\\n[prompt] order_investigation('A1003'):\\n" + order_investigation("A1003"))`,
       explanation:
-        "Resources are identified by URI, and templates like `orders://recent/{customer_id}` parameterize them — the host picks which to attach to context. The prompt becomes a user-facing command in clients that support it: a support engineer picks 'order_investigation', supplies the ID, and gets a consistent, well-engineered starting prompt instead of freestyling one. Ask yourself for each capability: who should decide this gets used? That answer picks the primitive.",
+        "Resources are identified by URI, and templates like `orders://recent/{customer_id}` parameterize them — the host picks which to attach to context. The prompt becomes a user-facing command in clients that support it: a support engineer picks 'order_investigation', supplies the ID, and gets a consistent, well-engineered starting prompt instead of freestyling one. The demo calls all three directly so you can read exactly what each produces; in a real host the *invoker* differs per primitive (model, application, user), but the returned content is what you see here. Ask yourself for each capability: who should decide this gets used? That answer picks the primitive.",
     },
     {
       type: "callout",

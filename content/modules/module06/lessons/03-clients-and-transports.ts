@@ -15,7 +15,11 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "a minimal stdio client",
-      code: `# client.py — connects to server.py over stdio
+      code: `# client.py — connects to server.py over stdio.
+# This is a TWO-FILE program: save Lesson 2's server as server.py next to
+# this file, then run \`python client.py\` from a terminal (pip install mcp
+# first). It spawns the server as a subprocess, so it isn't a single Colab
+# cell — the client owns the server's whole lifetime.
 import asyncio
 
 from mcp import ClientSession, StdioServerParameters
@@ -145,7 +149,19 @@ if __name__ == "__main__":
       language: "python",
       title: "attaching a remote MCP server to a model call, server-side",
       provider: "claude",
-      code: `# Anthropic Messages API: MCP connector (beta)
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted. Note: this needs a
+# REAL, reachable MCP server at the URL below — swap in one you've deployed.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
 import anthropic
 
 client = anthropic.Anthropic()
@@ -169,7 +185,19 @@ print(resp.content)`,
       variants: [
         {
           provider: "openai",
-          code: `# OpenAI Responses API: remote MCP servers are a built-in tool type
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted. Note: this needs a
+# REAL, reachable MCP server at the URL below — swap in one you've deployed.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
 from openai import OpenAI
 
 client = OpenAI()

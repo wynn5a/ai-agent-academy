@@ -53,12 +53,42 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "the rewrite: from get_data(id) to a task-level tool",
-      code: `# BAD: the model must already know an ID, gets a raw JSON dump,
+      code: `# Colab cell 1 — run once. No external API needed: a stub CRM lets the
+# well-designed tool actually run so you can see each branch's output.
+!pip install -q mcp
+
+from collections import namedtuple
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("crm-server")
+
+Customer = namedtuple("Customer", "id name")
+Issue = namedtuple("Issue", "id title status opened")
+
+
+class _CRM:                                   # stands in for your real CRM API
+    _customers = [Customer("c1", "Acme Corp"), Customer("c2", "Acme Labs"),
+                  Customer("c3", "Globex")]
+    _issues = {"c3": [Issue("I-9", "checkout 500s", "open", "2026-07-10"),
+                      Issue("I-7", "slow search", "open", "2026-07-02")]}
+
+    def search_customers(self, name):
+        return [c for c in self._customers if name.lower() in c.name.lower()]
+
+    def issues(self, customer_id, status="open"):
+        return [i for i in self._issues.get(customer_id, []) if i.status == status]
+
+
+crm = _CRM()
+
+
+# BAD: the model must already know an ID, gets a raw JSON dump,
 # and learns nothing from the name or description.
 @mcp.tool()
 def get_data(id: str) -> str:
     """Gets data."""
-    return str(fetch(id))          # 8k tokens of nested JSON, good luck
+    return str(crm._issues.get(id))          # nested JSON dump, good luck
 
 
 # GOOD: named for the task, searchable by what the model actually has
@@ -88,9 +118,15 @@ def find_customer_issues(
                 f"Check spelling, or try a shorter fragment of the name.")
     issues = crm.issues(customers[0].id, status=status)[:max_results]
     return "\\n".join(f"{i.id} | {i.title} | {i.status} | {i.opened}"
-                      for i in issues)`,
+                      for i in issues)
+
+
+# @mcp.tool() leaves each a normal callable — run all three branches:
+print("ambiguous ->", find_customer_issues("Acme"))
+print("no match  ->", find_customer_issues("Nonexistent"))
+print("success   ->\\n" + find_customer_issues("Globex"))`,
       explanation:
-        'Every choice here is a design principle. The tool takes what the model *has* (a name from the conversation) rather than what the API *wants* (a UUID). The ambiguous-match and no-match branches return **instructive text that tells the model its next move** — this is what "errors the model can recover from" means in practice, versus an exception that kills the call and teaches nothing. And output is shaped lines, not raw JSON: the model reads it just as well at a tenth of the tokens.',
+        'Every choice here is a design principle, and the printed output makes each one concrete. The tool takes what the model *has* (a name from the conversation) rather than what the API *wants* (a UUID). The ambiguous-match and no-match branches return **instructive text that tells the model its next move** — this is what "errors the model can recover from" means in practice, versus an exception that kills the call and teaches nothing. And output is shaped lines, not raw JSON: the model reads it just as well at a tenth of the tokens. The demo runs all three branches so you can compare their footprints side by side.',
     },
     {
       type: "heading",
@@ -104,7 +140,24 @@ def find_customer_issues(
       type: "code",
       language: "python",
       title: "pagination with honest truncation signals",
-      code: `@mcp.tool()
+      code: `# Colab cell 2 — run cell 1 first (it defines mcp). Stubbed log store.
+from collections import namedtuple
+
+LogLine = namedtuple("LogLine", "line")
+
+
+class _LogStore:                              # stands in for your real log store
+    _lines = [LogLine(f"2026-07-17T10:{i:02d}:00 ERROR timeout on shard {i}")
+              for i in range(57)]             # 57 matches, to force paging
+
+    def search(self, query):
+        return [x for x in self._lines if query.lower() in x.line.lower()]
+
+
+log_store = _LogStore()
+
+
+@mcp.tool()
 def search_logs(query: str, page: int = 1, page_size: int = 20) -> str:
     """Search application logs. Returns one page of matching lines.
 
@@ -128,9 +181,13 @@ def search_logs(query: str, page: int = 1, page_size: int = 20) -> str:
                 f"(page {page}).\\n{body}\\n"
                 f"MORE AVAILABLE: {remaining} further results -- "
                 f"request page {page + 1}, or refine the query to narrow.")
-    return f"Showing all {total} results.\\n{body}"`,
+    return f"Showing all {total} results.\\n{body}"
+
+
+# 57 matches, page_size 20 -> page 1 shows the MORE AVAILABLE trailer:
+print(search_logs("timeout", page=1, page_size=20))`,
       explanation:
-        "Layers of defense: a server-enforced `page_size` ceiling (never trust the model's arguments to be reasonable), a per-item length cap, and a loud MORE AVAILABLE trailer that tells the model both *that* it's seeing a partial view and *what to do about it*. The 'refine the query' nudge matters — paging through 40 pages is almost never what the user wanted, and the model will take the hint.",
+        "Layers of defense: a server-enforced `page_size` ceiling (never trust the model's arguments to be reasonable), a per-item length cap, and a loud MORE AVAILABLE trailer that tells the model both *that* it's seeing a partial view and *what to do about it*. The 'refine the query' nudge matters — paging through 40 pages is almost never what the user wanted, and the model will take the hint. Run the demo and read the trailer: that last line is the difference between the model knowing it saw 20 of 57 and silently concluding there were only 20.",
     },
     {
       type: "paragraph",

@@ -24,7 +24,31 @@ export const lesson05: Lesson = {
       type: "code",
       language: "python",
       title: "gating a destructive tool behind confirm",
-      code: `@mcp.tool()
+      code: `# Colab cell 1 — run once. No external API needed: a stub orders API lets
+# the two-phase gate actually run so you can see preview vs. action.
+!pip install -q mcp
+
+from collections import namedtuple
+
+from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP("orders-server")
+
+Order = namedtuple("Order", "id customer total status")
+
+
+class _OrdersAPI:                             # stands in for your real API
+    _orders = {"A1003": Order("A1003", "Initech", 420, "open")}
+    def get(self, order_id): return self._orders.get(order_id)
+    def cancel(self, order_id):
+        o = self._orders[order_id]
+        self._orders[order_id] = o._replace(status="cancelled")
+
+
+orders_api = _OrdersAPI()
+
+
+@mcp.tool()
 def cancel_order(order_id: str, confirm: bool = False) -> str:
     """Cancel an order. DESTRUCTIVE -- cannot be undone.
 
@@ -43,9 +67,15 @@ def cancel_order(order_id: str, confirm: bool = False) -> str:
                 f"order, call again with confirm=true.")
 
     orders_api.cancel(order_id)
-    return f"Cancelled order {order_id}. Confirmation sent to customer."`,
+    return f"Cancelled order {order_id}. Confirmation sent to customer."
+
+
+# watch the ceremony: default call previews, second call acts, bad id is inert
+print("1) default   ->", cancel_order("A1003"))
+print("2) confirmed ->", cancel_order("A1003", confirm=True))
+print("3) bad id    ->", cancel_order("A9999"))`,
       explanation:
-        "The two-phase shape does three jobs: the preview forces the model to surface specifics to the user before acting; the default-false means a hallucinated or injected 'cancel everything' call is inert; and the docstring instructs the model on the ceremony. Defense in depth still applies — hosts like Claude Desktop add their own human-approval prompts for tool calls, but your server shouldn't rely on every host doing so.",
+        "The two-phase shape does three jobs, all visible in the demo output: the preview forces the model to surface specifics to the user before acting; the default-false means a hallucinated or injected 'cancel everything' call is inert (call 1 changes nothing); and the docstring instructs the model on the ceremony. Only call 2, with `confirm=True`, actually mutates state. Defense in depth still applies — hosts like Claude Desktop add their own human-approval prompts for tool calls, but your server shouldn't rely on every host doing so.",
     },
     {
       type: "heading",
@@ -91,7 +121,10 @@ def cancel_order(order_id: str, confirm: bool = False) -> str:
       type: "code",
       language: "python",
       title: "run_python via a locked-down Docker container",
-      code: `import subprocess
+      code: `# Colab cell 2 — reference implementation; uses mcp from cell 1. This one
+# needs a Docker daemon, which Colab does NOT provide — run it on a machine
+# with Docker installed. It's here to read and adapt, not to run in Colab.
+import subprocess
 import tempfile
 
 
