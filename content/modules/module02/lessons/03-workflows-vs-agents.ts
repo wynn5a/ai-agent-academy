@@ -63,7 +63,24 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "prompt chaining — the gate between steps is the superpower",
-      code: `def ask(prompt: str) -> str:
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
+
+def ask(prompt: str) -> str:
     resp = client.messages.create(
         model=MODEL, max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
@@ -89,14 +106,56 @@ def release_notes(diff: str) -> str:
     return ask(
         "Rewrite these release notes for non-technical customers. "
         "Under 150 words, no jargon:\\n\\n" + draft
-    )`,
+    )
+
+FEATURE_DIFF = """
+--- a/src/checkout.py
++++ b/src/checkout.py
+@@ -12,7 +12,9 @@
+-    if cart.total > 100:
+-        shipping = 0
++    if cart.total > 50:
++        shipping = 0
++    send_confirmation_email(user, order)
+"""
+
+REFACTOR_DIFF = """
+--- a/src/util.py
++++ b/src/util.py
+@@ -1,2 +1,2 @@
+-def fmt(x):
+-    return str(x)
++def fmt(value):
++    return str(value)
+"""
+
+print(release_notes(FEATURE_DIFF))    # runs all three steps
+print("---")
+print(release_notes(REFACTOR_DIFF))   # NONE gate: one extract call, then code decides`,
       explanation:
-        "Each step does one small thing, so each is individually promptable, testable, and swappable (step 3 could run on a cheaper model). The **gate** between steps is plain Python — you can log it, unit-test it, and it never hallucinates. Compare debugging this to debugging an agent that 'sometimes writes bad release notes': here you inspect three intermediate strings and know exactly which step broke.",
+        "Each step does one small thing, so each is individually promptable, testable, and swappable (step 3 could run on a cheaper model). The **gate** between steps is plain Python — you can log it, unit-test it, and it never hallucinates. Compare debugging this to debugging an agent that 'sometimes writes bad release notes': here you inspect three intermediate strings and know exactly which step broke. The preamble (key + client + `ask`) is this lesson's one-time setup cell; the two sample diffs at the bottom exercise both paths — the feature diff flows through all three steps, the refactor diff trips the NONE gate after a single call.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `def ask(prompt: str) -> str:
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+from openai import OpenAI
+
+client = OpenAI()
+MODEL = "gpt-5.5"
+
+def ask(prompt: str) -> str:
     resp = client.responses.create(
         model=MODEL,
         input=prompt,        # string shorthand for a single user turn
@@ -122,7 +181,32 @@ def release_notes(diff: str) -> str:
     return ask(
         "Rewrite these release notes for non-technical customers. "
         "Under 150 words, no jargon:\\n\\n" + draft
-    )`,
+    )
+
+FEATURE_DIFF = """
+--- a/src/checkout.py
++++ b/src/checkout.py
+@@ -12,7 +12,9 @@
+-    if cart.total > 100:
+-        shipping = 0
++    if cart.total > 50:
++        shipping = 0
++    send_confirmation_email(user, order)
+"""
+
+REFACTOR_DIFF = """
+--- a/src/util.py
++++ b/src/util.py
+@@ -1,2 +1,2 @@
+-def fmt(x):
+-    return str(x)
++def fmt(value):
++    return str(value)
+"""
+
+print(release_notes(FEATURE_DIFF))    # runs all three steps
+print("---")
+print(release_notes(REFACTOR_DIFF))   # NONE gate: one extract call, then code decides`,
           explanation:
             "`resp.output_text` aggregates all text output so no block iteration is needed, and `max_output_tokens` is optional on OpenAI where Anthropic's `max_tokens` is required — the gates, the workflow's whole point, are provider-independent Python.",
         },
@@ -132,7 +216,24 @@ def release_notes(diff: str) -> str:
       type: "code",
       language: "python",
       title: "routing — one forced classification, then specialized paths",
-      code: `ROUTE_TOOL = {
+      code: `# Colab cell 2 — run cell 1 first (it creates client and MODEL).
+
+# Stand-in handlers so the routing skeleton runs end to end. In production
+# each is its own specialized path: a strict payment chain, a triage chain,
+# RAG on a cheaper model, a human queue.
+def run_refund_workflow(request: str) -> str:
+    return "[refund workflow] purchase verified, refund queued"
+
+def run_triage_chain(request: str) -> str:
+    return "[triage chain] repro extracted, severity set, ticket filed"
+
+def answer_from_docs(request: str) -> str:
+    return "[docs RAG] answered from the user guide, with citations"
+
+def escalate_to_human(request: str) -> str:
+    return "[human queue] handed to a support agent with full context"
+
+ROUTE_TOOL = {
     "name": "route",
     "description": "Classify the incoming support request.",
     "input_schema": {
@@ -165,14 +266,33 @@ def handle(request: str) -> str:
         "how_to": answer_from_docs,        # RAG on a cheaper model
         "other": escalate_to_human,
     }
-    return handlers[verdict["category"]](request)`,
+    return handlers[verdict["category"]](request)
+
+print(handle("I was charged twice for my subscription this month."))
+print(handle("The export button crashes when the report has zero rows."))`,
       explanation:
-        "Routing's payoff is **separation of concerns**: each handler gets a prompt, tool set, and model tier optimized for its category, instead of one bloated do-everything prompt. The `enum` makes the classification a closed set, and returning a confidence lets you route uncertainty to humans. Note this whole system contains five LLM touchpoints and zero agent loops.",
+        "Routing's payoff is **separation of concerns**: each handler gets a prompt, tool set, and model tier optimized for its category, instead of one bloated do-everything prompt. The `enum` makes the classification a closed set, and returning a confidence lets you route uncertainty to humans. The one-line handlers keep the cell runnable; in production each is its own workflow, giving the full system five LLM touchpoints and zero agent loops.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell 2 — run cell 1 first (it creates client and MODEL).
+import json
+
+# Stand-in handlers so the routing skeleton runs end to end. In production
+# each is its own specialized path: a strict payment chain, a triage chain,
+# RAG on a cheaper model, a human queue.
+def run_refund_workflow(request: str) -> str:
+    return "[refund workflow] purchase verified, refund queued"
+
+def run_triage_chain(request: str) -> str:
+    return "[triage chain] repro extracted, severity set, ticket filed"
+
+def answer_from_docs(request: str) -> str:
+    return "[docs RAG] answered from the user guide, with citations"
+
+def escalate_to_human(request: str) -> str:
+    return "[human queue] handed to a support agent with full context"
 
 ROUTE_TOOL = {
     "type": "function",
@@ -209,7 +329,10 @@ def handle(request: str) -> str:
         "how_to": answer_from_docs,        # RAG on a cheaper model
         "other": escalate_to_human,
     }
-    return handlers[verdict["category"]](request)`,
+    return handlers[verdict["category"]](request)
+
+print(handle("I was charged twice for my subscription this month."))
+print(handle("The export button crashes when the report has zero rows."))`,
           explanation:
             "Same forced classification trick; the schema lives under `parameters` instead of `input_schema`, and the verdict comes back as a JSON string in `call.arguments` rather than Anthropic's pre-parsed `block.input` dict.",
         },

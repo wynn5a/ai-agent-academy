@@ -66,7 +66,8 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "a Budget object the loop consults before every call",
-      code: `import time
+      code: `# Colab cell 1 — pure Python: runs with no key and no client.
+import time
 
 class Budget:
     # Pull current per-MTok prices from your provider's pricing page.
@@ -95,7 +96,10 @@ class Budget:
             return f"cost budget exceeded ({self.usd:.3f} USD)"
         if time.monotonic() >= self.deadline:
             return "wall-clock deadline passed"
-        return None`,
+        return None
+
+budget = Budget(max_iterations=3, max_usd=0.25, max_seconds=30)
+print(budget.exhausted())   # None -> all guards green, the loop may proceed`,
       explanation:
         "Small but deliberate: `exhausted()` returns a *reason string* rather than a boolean, because that reason goes into the trace log and into the degraded answer's metadata (\"incomplete: cost budget exceeded\"). `time.monotonic()` instead of `time.time()` because wall-clock time can jump (NTP adjustments); monotonic never goes backward. Prices live in named constants so a test can assert they're non-zero before you ship.",
     },
@@ -107,7 +111,65 @@ class Budget:
       type: "code",
       language: "python",
       title: "loop with finish tool + best-effort fallback — never raises",
-      code: `FINISH_TOOL = {
+      code: `# Colab cell 2 — run cell 1 first (it defines Budget). This cell adds the
+# key, the client, and a fake repo, then runs the fully guarded loop.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
+
+# The same tiny in-memory "repo" as lesson 2, so the tools do real work.
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
+
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
+
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+TOOLS = [
+    {"name": "list_dir", "description": "List repo paths under a prefix.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}}, "required": []}},
+    {"name": "grep", "description": "Find lines matching a substring.",
+     "input_schema": {"type": "object",
+                      "properties": {"pattern": {"type": "string"}},
+                      "required": ["pattern"]}},
+    {"name": "read_file", "description": "Read one file in full, by path.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}},
+                      "required": ["path"]}},
+]
+
+def execute_all(content) -> list:
+    # naive executor: run every requested tool, pair every result.
+    # Lesson 5 hardens this into SafeExecutor (errors, budgets, repeats).
+    return [{"type": "tool_result", "tool_use_id": block.id,
+             "content": IMPL[block.name](**block.input)}
+            for block in content if block.type == "tool_use"]
+
+FINISH_TOOL = {
     "name": "finish",
     "description": (
         "Submit your final answer. Call exactly once, when you have enough "
@@ -155,7 +217,7 @@ def run(question: str, budget: Budget) -> dict:
 
         messages.append({"role": "assistant", "content": resp.content})
         messages.append({"role": "user",
-                         "content": execute_all(resp.content)})  # lesson 5
+                         "content": execute_all(resp.content)})
 
 def best_effort(messages, reason: str) -> dict:
     """Budget is gone. One last cheap call, NO tools, to salvage an answer."""
@@ -165,15 +227,76 @@ def best_effort(messages, reason: str) -> dict:
         "you could not verify."}]
     resp = client.messages.create(model=MODEL, max_tokens=1024,
                                   messages=wrap_up)
-    return {"answer": resp.content[0].text, "citations": [],
-            "complete": False, "stop_reason": reason}`,
+    answer = next(b.text for b in resp.content if b.type == "text")
+    return {"answer": answer, "citations": [],
+            "complete": False, "stop_reason": reason}
+
+print(run("How does this service configure retries?", Budget()))`,
       explanation:
-        "Three design points. (1) The `finish` tool turns 'the model went quiet' into a structured, citation-bearing artifact — and lets you *reject* endings that lack citations. (2) The budget check sits at the **top** of the loop, so exhaustion is detected before spending. (3) `best_effort` makes one final tool-free call — a caller gets `{complete: false, stop_reason: ...}` instead of a stack trace. One subtlety: the message array must end in an API-legal state (every `tool_use` answered) before the wrap-up call, which the loop guarantees since results are appended in the same iteration.",
+        "Three design points. (1) The `finish` tool turns 'the model went quiet' into a structured, citation-bearing artifact — and lets you *reject* endings that lack citations. (2) The budget check sits at the **top** of the loop, so exhaustion is detected before spending. (3) `best_effort` makes one final tool-free call — a caller gets `{complete: false, stop_reason: ...}` instead of a stack trace. One subtlety: the message array must end in an API-legal state (every `tool_use` answered) before the wrap-up call, which the loop guarantees since results are appended in the same iteration. The repo tools repeat lesson 2's fixture so this cell stands alone next to cell 1, and `execute_all` is deliberately naive — run everything, pair every result; lesson 5 hardens it into `SafeExecutor`.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell 2 — run cell 1 first (it defines Budget). This cell adds the
+# key, the client, and a fake repo, then runs the fully guarded loop.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
+from openai import OpenAI
+
+client = OpenAI()
+MODEL = "gpt-5.5"
+
+# The same tiny in-memory "repo" as lesson 2, so the tools do real work.
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
+
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
+
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+TOOLS = [
+    {"type": "function", "name": "list_dir",
+     "description": "List repo paths under a prefix.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}}, "required": []}},
+    {"type": "function", "name": "grep",
+     "description": "Find lines matching a substring.",
+     "parameters": {"type": "object",
+                    "properties": {"pattern": {"type": "string"}},
+                    "required": ["pattern"]}},
+    {"type": "function", "name": "read_file",
+     "description": "Read one file in full, by path.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"]}},
+]
+
+def execute(call) -> str:
+    # naive executor: run the requested tool with parsed arguments.
+    # Lesson 5 hardens this into SafeExecutor (errors, budgets, repeats).
+    return IMPL[call.name](**json.loads(call.arguments))
 
 FINISH_TOOL = {
     "type": "function",
@@ -227,7 +350,7 @@ def run(question: str, budget: Budget) -> dict:
             input_items.append({
                 "type": "function_call_output",
                 "call_id": call.call_id,
-                "output": execute(call),          # lesson 5
+                "output": execute(call),
             })
 
 def best_effort(input_items, reason: str) -> dict:
@@ -238,7 +361,9 @@ def best_effort(input_items, reason: str) -> dict:
         "you could not verify."}]
     resp = client.responses.create(model=MODEL, input=wrap_up)
     return {"answer": resp.output_text, "citations": [],
-            "complete": False, "stop_reason": reason}`,
+            "complete": False, "stop_reason": reason}
+
+print(run("How does this service configure retries?", Budget()))`,
           explanation:
             "The loop structure, top-of-loop budget check, nudge, and best-effort fallback are identical; what inverts is termination detection — no `function_call` items in `resp.output` means 'model went quiet' (there is no `stop_reason`) — and `budget.add_call(resp.usage)` works unchanged because both SDKs name the fields `usage.input_tokens`/`usage.output_tokens`. The same legality rule applies: every echoed `function_call` needs its `function_call_output` before the next call.",
         },

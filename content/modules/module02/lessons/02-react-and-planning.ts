@@ -22,7 +22,7 @@ export const lesson02: Lesson = {
       language: "python",
       title:
         "the original technique: ReAct as pure prompting (know it, don't ship it)",
-      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
 # ANTHROPIC_API_KEY) or just paste it when prompted.
 !pip install -q anthropic
 
@@ -114,7 +114,7 @@ print(run_react("What problem does the ReAct pattern solve?"))`,
       variants: [
         {
           provider: "openai",
-          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
 # OPENAI_API_KEY) or just paste it when prompted.
 !pip install -q openai
 
@@ -257,22 +257,8 @@ print(run_react("What problem does the ReAct pattern solve?"))`,
       type: "code",
       language: "python",
       title: "plan-first agent with an explicit re-plan escape hatch",
-      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
-# ANTHROPIC_API_KEY) or just paste it when prompted.
-!pip install -q anthropic
-
-import os
-try:
-    from google.colab import userdata
-    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
-except Exception:
-    from getpass import getpass
-    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
-
-import anthropic
-
-client = anthropic.Anthropic()
-MODEL = "claude-sonnet-5"
+      code: `# Colab cell 2 — run the ReAct cell above first (it installs the SDK and
+# creates client and MODEL). This cell swaps the fake KB for a fake repo.
 
 # A tiny in-memory "repo" so list_dir/grep/read_file do real work.
 REPO = {
@@ -374,28 +360,14 @@ def run_with_plan(question: str, max_iterations: int = 12) -> str:
 
 print(run_with_plan("How does this service configure retries?"))`,
       explanation:
-        "Three deliberate choices: the plan is produced by a **forced structured call** (Module 1's tool-choice trick), so you always get a parseable list; the plan is framed as \"a hypothesis\", which measurably lowers the model's tendency to defend it; and re-planning is a *tool call* — so it shows up in your trace log and you can count revisions per run (the `revisions` counter here). Everything above `PLAN_TOOL` is one-time setup — the key and a fake repo with `list_dir`/`grep`/`read_file` — so the cell runs in Colab; the loop is the same shape as lesson 1, just with `submit_plan` available mid-run. An agent that re-plans 5 times in 15 iterations is telling you the task or tools are underspecified.",
+        "Three deliberate choices: the plan is produced by a **forced structured call** (Module 1's tool-choice trick), so you always get a parseable list; the plan is framed as \"a hypothesis\", which measurably lowers the model's tendency to defend it; and re-planning is a *tool call* — so it shows up in your trace log and you can count revisions per run (the `revisions` counter here). The key and client carry over from the ReAct cell — the only setup this cell adds is the fake repo with `list_dir`/`grep`/`read_file`; the loop is the same shape as lesson 1, just with `submit_plan` available mid-run. An agent that re-plans 5 times in 15 iterations is telling you the task or tools are underspecified.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
-# OPENAI_API_KEY) or just paste it when prompted.
-!pip install -q openai
-
-import os
-try:
-    from google.colab import userdata
-    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
-except Exception:
-    from getpass import getpass
-    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
-
+          code: `# Colab cell 2 — run the ReAct cell above first (it installs the SDK and
+# creates client and MODEL). This cell swaps the fake KB for a fake repo.
 import json
-from openai import OpenAI
-
-client = OpenAI()
-MODEL = "gpt-5.5"
 
 # A tiny in-memory "repo" so list_dir/grep/read_file do real work.
 REPO = {

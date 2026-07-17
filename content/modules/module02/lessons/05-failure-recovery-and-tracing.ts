@@ -30,7 +30,8 @@ export const lesson05: Lesson = {
       language: "python",
       title:
         "a tool executor that never raises and applies escalating pressure",
-      code: `import json
+      code: `# Colab cell 1 — pure Python: runs with no key and no client.
+import json
 from collections import Counter
 
 class SafeExecutor:
@@ -62,9 +63,15 @@ class SafeExecutor:
 # in the loop:
 #   content, is_error = executor.execute(block.name, block.input)
 #   results.append({"type": "tool_result", "tool_use_id": block.id,
-#                   "content": content, "is_error": is_error})`,
+#                   "content": content, "is_error": is_error})
+
+# demo: all three defenses fire, no API key needed
+flaky = SafeExecutor({"read_file": lambda path: open(path).read()})
+for path in ["/no/a", "/no/a", "/no/b", "/no/c", "/no/d"]:
+    content, _ = flaky.execute("read_file", {"path": path})
+    print(f"{path}: {content[:58]}")`,
       explanation:
-        "The two escalation paths are checked *before* execution, so a disabled tool costs nothing. Setting `is_error: true` on the result matters on Anthropic's API: it flags the result so the model treats it as a failure to route around rather than data. Keep the failure state per-run (on the executor object), not global — yesterday's flaky tool shouldn't be banned today.",
+        "The two escalation paths are checked *before* execution, so a disabled tool costs nothing. Setting `is_error: true` on the result matters on Anthropic's API: it flags the result so the model treats it as a failure to route around rather than data. Keep the failure state per-run (on the executor object), not global — yesterday's flaky tool shouldn't be banned today. The demo at the bottom walks the escalation ladder with no API involved: a specific error first, the exact-repeat short-circuit second, and after the third distinct failure the tool goes dark.",
     },
     {
       type: "heading",
@@ -78,7 +85,8 @@ class SafeExecutor:
       type: "code",
       language: "python",
       title: "truncate at the source + compact old results",
-      code: `MAX_TOOL_OUTPUT_CHARS = 4000
+      code: `# Colab cell 2 — pure Python: runs with no key and no client.
+MAX_TOOL_OUTPUT_CHARS = 4000
 
 def truncate(output: str, limit: int = MAX_TOOL_OUTPUT_CHARS) -> str:
     if len(output) <= limit:
@@ -109,9 +117,20 @@ def compact_old_results(messages: list, keep_last: int = 2,
             else:
                 new_content.append(part)
         compacted.append({**msg, "content": new_content})
-    return compacted`,
+    return compacted
+
+# demo: six fake iterations shrink; the two most recent stay intact
+print(truncate("x" * 9000)[-90:])
+history = []
+for i in range(6):
+    history.append({"role": "assistant", "content": f"(tool call {i})"})
+    history.append({"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": f"t{i}", "content": "y" * 5000}]})
+before = sum(len(str(m)) for m in history)
+after = sum(len(str(m)) for m in compact_old_results(history))
+print(f"history: {before:,} chars -> {after:,} chars")`,
       explanation:
-        "The truncation note is not politeness — it's an **affordance**: the model reads it and issues a narrower grep or an offset read, which is exactly the behavior you want. Compaction trades a risk (the model might need that data again) for a guarantee (context stays bounded); the stub tells it recovery is one tool call away. Warning: compaction rewrites history, so run it on a *copy* used for the API call if your trace log needs the original.",
+        "The truncation note is not politeness — it's an **affordance**: the model reads it and issues a narrower grep or an offset read, which is exactly the behavior you want. Compaction trades a risk (the model might need that data again) for a guarantee (context stays bounded); the stub tells it recovery is one tool call away. Warning: compaction rewrites history, so run it on a *copy* used for the API call if your trace log needs the original. The demo compacts a fake twelve-message history and prints the before/after sizes — the two most recent iterations survive untouched.",
     },
     {
       type: "paragraph",
@@ -166,8 +185,25 @@ def compact_old_results(messages: list, keep_last: int = 2,
     {
       type: "code",
       language: "python",
-      title: "a 20-line JSONL tracer — greppable, diffable, tail-able",
-      code: `import json, time, uuid
+      title:
+        "the 20-line JSONL tracer, wired into a complete traced run",
+      code: `# Colab cell 3 — run cells 1 and 2 first (SafeExecutor, truncate). This
+# cell adds the key, the client, and a fake repo, then traces a full run.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import json, time, uuid
+import anthropic
+
+client = anthropic.Anthropic()
+MODEL = "claude-sonnet-5"
 
 class Tracer:
     def __init__(self, path: str = "trace.jsonl"):
@@ -180,31 +216,99 @@ class Tracer:
         with open(self.path, "a") as f:
             f.write(json.dumps(record, default=str) + "\\n")
 
-# usage inside the loop:
-tracer = Tracer()
-t0 = time.monotonic()
-resp = client.messages.create(model=MODEL, max_tokens=2048,
-                              tools=TOOLS, messages=messages)
-tracer.log("llm_call", iteration=i,
-           input_tokens=resp.usage.input_tokens,
-           output_tokens=resp.usage.output_tokens,
-           usd_so_far=round(budget.usd, 4),
-           stop_reason=resp.stop_reason,
-           latency_ms=round((time.monotonic() - t0) * 1000))
+# the same tiny "repo" as lesson 2, so the tools have something to find
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
 
-content, is_error = executor.execute(block.name, block.input)
-tracer.log("tool_call", iteration=i, tool=block.name, args=block.input,
-           result_chars=len(content), is_error=is_error)
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
 
-tracer.log("terminate", reason="finish tool called", complete=True,
-           iterations=budget.iterations, total_usd=round(budget.usd, 4))`,
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+TOOLS = [
+    {"name": "list_dir", "description": "List repo paths under a prefix.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}}, "required": []}},
+    {"name": "grep", "description": "Find lines matching a substring.",
+     "input_schema": {"type": "object",
+                      "properties": {"pattern": {"type": "string"}},
+                      "required": ["pattern"]}},
+    {"name": "read_file", "description": "Read one file in full, by path.",
+     "input_schema": {"type": "object",
+                      "properties": {"path": {"type": "string"}},
+                      "required": ["path"]}},
+]
+
+def run_traced(question: str, max_iterations: int = 10) -> str:
+    tracer = Tracer()
+    executor = SafeExecutor(IMPL)                     # cell 1
+    messages = [{"role": "user", "content": question}]
+    for i in range(max_iterations):
+        t0 = time.monotonic()
+        resp = client.messages.create(model=MODEL, max_tokens=1024,
+                                      tools=TOOLS, messages=messages)
+        tracer.log("llm_call", iteration=i,
+                   input_tokens=resp.usage.input_tokens,
+                   output_tokens=resp.usage.output_tokens,
+                   stop_reason=resp.stop_reason,
+                   latency_ms=round((time.monotonic() - t0) * 1000))
+        if resp.stop_reason != "tool_use":
+            tracer.log("terminate", reason="natural stop", complete=True,
+                       iterations=i)
+            return next(b.text for b in resp.content if b.type == "text")
+        messages.append({"role": "assistant", "content": resp.content})
+        results = []
+        for block in resp.content:
+            if block.type == "tool_use":
+                content, is_error = executor.execute(block.name, block.input)
+                content = truncate(content)           # cell 2
+                tracer.log("tool_call", iteration=i, tool=block.name,
+                           args=block.input, result_chars=len(content),
+                           is_error=is_error)
+                results.append({"type": "tool_result", "tool_use_id": block.id,
+                                "content": content, "is_error": is_error})
+        messages.append({"role": "user", "content": results})
+    tracer.log("terminate", reason="max iterations", complete=False,
+               iterations=max_iterations)
+    return "(incomplete: max iterations exceeded)"
+
+print(run_traced("How does this service configure retries?"))
+print("--- trace.jsonl ---")
+print(open("trace.jsonl").read())`,
       explanation:
-        "JSONL (one JSON object per line) is the right format because it's append-only (crash-safe — you keep everything up to the crash), streamable (`tail -f` during a live run), and trivially queryable with `jq` or pandas. Log *every* LLM call and *every* tool call, not just failures: the question you'll actually ask is \"what was the model seeing when it made this weird choice?\", and that requires the whole path. This log is also the artifact you walk through in the Gate G1 practical.",
+        "This cell assembles the whole module: lesson 1's loop, cell 1's `SafeExecutor` guarding every execution, cell 2's `truncate` capping outputs, and the Tracer logging each step (a production loop would also record `usd_so_far` from lesson 4's Budget). JSONL (one JSON object per line) is the right format because it's append-only (crash-safe — you keep everything up to the crash), streamable (`tail -f` during a live run), and trivially queryable with `jq` or pandas. Log *every* LLM call and *every* tool call, not just failures: the question you'll actually ask is \"what was the model seeing when it made this weird choice?\", and that requires the whole path. The trace printed at the end is exactly the artifact you walk through in the Gate G1 practical.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json, time, uuid
+          code: `# Colab cell 3 — run cells 1 and 2 first (SafeExecutor, truncate). This
+# cell adds the key, the client, and a fake repo, then traces a full run.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json, time, uuid
+from openai import OpenAI
+
+client = OpenAI()
+MODEL = "gpt-5.5"
 
 class Tracer:
     def __init__(self, path: str = "trace.jsonl"):
@@ -217,28 +321,79 @@ class Tracer:
         with open(self.path, "a") as f:
             f.write(json.dumps(record, default=str) + "\\n")
 
-# usage inside the loop:
-tracer = Tracer()
-t0 = time.monotonic()
-resp = client.responses.create(model=MODEL, input=input_items, tools=TOOLS)
-calls = [item for item in resp.output if item.type == "function_call"]
-tracer.log("llm_call", iteration=i,
-           input_tokens=resp.usage.input_tokens,
-           output_tokens=resp.usage.output_tokens,
-           usd_so_far=round(budget.usd, 4),
-           tool_calls=len(calls),        # zero = the model's natural stop
-           latency_ms=round((time.monotonic() - t0) * 1000))
+# the same tiny "repo" as lesson 2, so the tools have something to find
+REPO = {
+    "README.md": "Sample service. Retry policy is configured in config/app.yaml.",
+    "config/app.yaml": "retries: 5\\nbackoff: exponential\\ntimeout_s: 30\\n",
+    "src/retry.py": "def backoff(attempt):\\n    return min(2 ** attempt, 60)\\n",
+}
 
-for call in calls:
-    args = json.loads(call.arguments)
-    content, is_error = executor.execute(call.name, args)
-    tracer.log("tool_call", iteration=i, tool=call.name, args=args,
-               result_chars=len(content), is_error=is_error)
+def list_dir(path: str = "") -> str:
+    hits = [p for p in REPO if p.startswith(path)]
+    return "\\n".join(sorted(hits)) if hits else f"Nothing under {path!r}."
 
-tracer.log("terminate", reason="finish tool called", complete=True,
-           iterations=budget.iterations, total_usd=round(budget.usd, 4))`,
+def grep(pattern: str) -> str:
+    hits = [f"{p}: {line}" for p, body in REPO.items()
+            for line in body.splitlines() if pattern.lower() in line.lower()]
+    return "\\n".join(hits) if hits else f"No lines match {pattern!r}."
+
+def read_file(path: str) -> str:
+    return REPO.get(path, f"No file at {path!r}.")
+
+IMPL = {"list_dir": list_dir, "grep": grep, "read_file": read_file}
+TOOLS = [
+    {"type": "function", "name": "list_dir",
+     "description": "List repo paths under a prefix.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}}, "required": []}},
+    {"type": "function", "name": "grep",
+     "description": "Find lines matching a substring.",
+     "parameters": {"type": "object",
+                    "properties": {"pattern": {"type": "string"}},
+                    "required": ["pattern"]}},
+    {"type": "function", "name": "read_file",
+     "description": "Read one file in full, by path.",
+     "parameters": {"type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"]}},
+]
+
+def run_traced(question: str, max_iterations: int = 10) -> str:
+    tracer = Tracer()
+    executor = SafeExecutor(IMPL)                     # cell 1
+    input_items = [{"role": "user", "content": question}]
+    for i in range(max_iterations):
+        t0 = time.monotonic()
+        resp = client.responses.create(model=MODEL, input=input_items,
+                                       tools=TOOLS)
+        calls = [item for item in resp.output if item.type == "function_call"]
+        tracer.log("llm_call", iteration=i,
+                   input_tokens=resp.usage.input_tokens,
+                   output_tokens=resp.usage.output_tokens,
+                   tool_calls=len(calls),   # zero = the model's natural stop
+                   latency_ms=round((time.monotonic() - t0) * 1000))
+        input_items += resp.output           # whole turn back (reasoning too)
+        if not calls:
+            tracer.log("terminate", reason="natural stop", complete=True,
+                       iterations=i)
+            return resp.output_text
+        for call in calls:
+            args = json.loads(call.arguments)
+            content, is_error = executor.execute(call.name, args)
+            content = truncate(content)               # cell 2
+            tracer.log("tool_call", iteration=i, tool=call.name, args=args,
+                       result_chars=len(content), is_error=is_error)
+            input_items.append({"type": "function_call_output",
+                                "call_id": call.call_id, "output": content})
+    tracer.log("terminate", reason="max iterations", complete=False,
+               iterations=max_iterations)
+    return "(incomplete: max iterations exceeded)"
+
+print(run_traced("How does this service configure retries?"))
+print("--- trace.jsonl ---")
+print(open("trace.jsonl").read())`,
           explanation:
-            "The Tracer is identical (JSONL doesn't care who you call); what changes is *what you log for termination* — the Responses API has no `stop_reason`, so record the count of `function_call` items instead (zero = natural stop). The `usage` field names match across both SDKs, so cost accounting is unchanged.",
+            "The Tracer is identical (JSONL doesn't care who you call); what changes is *what you log for termination* — the Responses API has no `stop_reason`, so record the count of `function_call` items instead (zero = natural stop). The `usage` field names match across both SDKs, so the token fields log identically.",
         },
       ],
     },
