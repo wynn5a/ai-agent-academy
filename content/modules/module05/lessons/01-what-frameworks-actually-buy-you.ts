@@ -79,7 +79,11 @@ export const lesson01: Lesson = {
       type: "code",
       language: "python",
       title: "the smallest real LangGraph",
-      code: `from typing import TypedDict
+      code: `# Colab cell 1 — run once. No API key needed: the nodes are stubbed, so
+# the whole graph runs on LangGraph's machinery alone.
+!pip install -q langgraph
+
+from typing import TypedDict
 
 from langgraph.graph import StateGraph, START, END
 
@@ -118,7 +122,8 @@ print(result["draft"], result["approved"])`,
       type: "code",
       language: "python",
       title: "watching it run: stream instead of invoke",
-      code: `# stream_mode="updates" yields each node's state delta as it executes —
+      code: `# Colab cell 2 — run cell 1 first (it defines graph).
+# stream_mode="updates" yields each node's state delta as it executes —
 # this is your first inter-agent trace, for free.
 for step in graph.stream({"question": "What is a checkpointer?"},
                          stream_mode="updates"):

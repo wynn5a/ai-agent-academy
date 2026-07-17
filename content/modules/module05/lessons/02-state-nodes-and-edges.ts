@@ -15,7 +15,10 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "state schema with reducers",
-      code: `import operator
+      code: `# Colab cell 1 — run once. No API key needed; nodes are stubbed.
+!pip install -q langgraph
+
+import operator
 from typing import Annotated, TypedDict
 
 
@@ -39,9 +42,18 @@ def planner(state: ResearchState) -> dict:
 
 def searcher(state: ResearchState) -> dict:
     # runs once per subtask when fanned out; returns ONE finding
-    return {"findings": ["finding for one subtask"]}`,
+    return {"findings": ["finding for one subtask"]}
+
+
+# nodes are plain functions returning PARTIAL updates — testable alone,
+# no graph needed:
+print(planner({"question": "Compare vector DB index types", "plan": [],
+               "findings": [], "draft": "", "critique": "",
+               "revision_count": 0}))
+print(searcher({"plan": ["subtask A"], "question": "", "findings": [],
+                "draft": "", "critique": "", "revision_count": 0}))`,
       explanation:
-        "The `Annotated[list[str], operator.add]` pattern is load-bearing: it declares a **reducer** that merges concurrent updates. Without it, two parallel searchers returning `findings` would conflict — with it, LangGraph appends both. Default behavior for un-annotated fields is last-write-wins replacement, which is what you want for `draft` and `critique`.",
+        "The `Annotated[list[str], operator.add]` pattern is load-bearing: it declares a **reducer** that merges concurrent updates. Without it, two parallel searchers returning `findings` would conflict — with it, LangGraph appends both. Default behavior for un-annotated fields is last-write-wins replacement, which is what you want for `draft` and `critique`. The demo calls the nodes directly — no graph, no key — to show they're ordinary functions returning partial updates.",
     },
     {
       type: "paragraph",
@@ -55,7 +67,16 @@ def searcher(state: ResearchState) -> dict:
       type: "code",
       language: "python",
       title: "critic loop with a conditional edge and a hard cap",
-      code: `from langgraph.graph import StateGraph, START, END
+      code: `# Colab cell 2 — run cell 1 first (it defines ResearchState).
+from langgraph.graph import StateGraph, START, END
+
+
+def writer(state: ResearchState) -> dict:
+    # stubbed model call; on a revision it addresses the critique
+    feedback = state.get("critique", "")
+    note = f" [addressing: {feedback}]" if feedback else ""
+    return {"draft": f"Draft (rev {state['revision_count']}) for: "
+                     f"{state['question']}{note}"}
 
 
 def critic(state: ResearchState) -> dict:
@@ -84,9 +105,16 @@ builder.add_conditional_edges(
     route_after_critic,
     {"revise": "writer", "done": END},   # label -> destination map
 )
-graph = builder.compile()`,
+graph = builder.compile()
+
+# watch the loop run once and then hit the cap:
+for step in graph.stream({"question": "What is a reducer?", "plan": [],
+                          "findings": [], "draft": "", "critique": "",
+                          "revision_count": 0},
+                         stream_mode="updates"):
+    print(step)`,
       explanation:
-        "The router is a plain function from state to a label; the dict maps labels to destinations. Note the `revision_count` guard — **every cycle in your graph needs a hard cap**, exactly like the max-iteration guard in your Module 1 loop. A critic-writer cycle without one is an infinite loop with an API bill.",
+        "The router is a plain function from state to a label; the dict maps labels to destinations. Note the `revision_count` guard — **every cycle in your graph needs a hard cap**, exactly like the max-iteration guard in your Module 1 loop. A critic-writer cycle without one is an infinite loop with an API bill. `writer` is stubbed here (cell 1 defined the rest) so the whole loop streams with no key — you'll see writer → critic → writer once, then `done` at the cap.",
     },
     {
       type: "table",

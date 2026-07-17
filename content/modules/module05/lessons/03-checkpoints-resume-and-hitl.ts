@@ -15,7 +15,32 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "checkpointing: kill it, resume it",
-      code: `from langgraph.checkpoint.memory import MemorySaver
+      code: `# Colab cell 1 — run once. No API key needed; nodes are stubbed.
+!pip install -q langgraph
+
+import operator
+from typing import Annotated, TypedDict
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+
+
+class State(TypedDict):
+    question: str
+    steps: Annotated[list[str], operator.add]
+
+
+def plan(state: State) -> dict:   return {"steps": ["planned"]}
+def search(state: State) -> dict: return {"steps": ["searched"]}
+def write(state: State) -> dict:  return {"steps": ["wrote"]}
+
+builder = StateGraph(State)
+for name, fn in [("plan", plan), ("search", search), ("write", write)]:
+    builder.add_node(name, fn)
+builder.add_edge(START, "plan")
+builder.add_edge("plan", "search")
+builder.add_edge("search", "write")
+builder.add_edge("write", END)
 
 # In-memory checkpointer: perfect for dev/tests. For Lab 05's
 # "resume after a killed process" criterion you need a DURABLE one --
@@ -24,21 +49,20 @@ checkpointer = MemorySaver()
 graph = builder.compile(checkpointer=checkpointer)
 
 config = {"configurable": {"thread_id": "research-042"}}
-
-# Run 1: starts the job. Suppose the process is killed mid-graph.
 graph.invoke({"question": "Compare vector DB index types"}, config)
 
-# Run 2 (new process, durable checkpointer): SAME thread_id.
-# Passing None as input means "continue from the checkpoint,
-# don't start over".
-graph.invoke(None, config)
-
-# Inspect where a thread currently is:
+# The checkpointer snapshots state after every step, keyed by thread_id.
+# get_state() is your debugging window into any thread:
 snapshot = graph.get_state(config)
-print(snapshot.values)        # the persisted state dict
-print(snapshot.next)          # which node(s) would run next`,
+print(snapshot.values)        # the persisted state dict (all steps ran)
+print(snapshot.next)          # () — nothing left to run; the graph completed
+
+# The state lives in the CHECKPOINTER, not the graph object. A brand-new
+# graph compiled against the same checkpointer + thread_id sees it:
+graph2 = builder.compile(checkpointer=checkpointer)
+print(graph2.get_state(config).values)   # same state — survived the object`,
       explanation:
-        "The `thread_id` is the resume key — one per research job in Lab 05. `get_state()` is your debugging window: after a crash, look at `snapshot.next` to see exactly where execution stopped. `MemorySaver` dies with the process; swap in a SQLite/Postgres checkpointer (separate packages, identical interface) for real durability.",
+        'The `thread_id` is the resume key — one per research job in Lab 05. `get_state()` is your debugging window: `snapshot.next` tells you which node(s) would run next (empty here because the run completed; after a real crash mid-graph it names exactly where execution stopped). The last three lines make the point concrete: a fresh graph object reads the same persisted state, because it lived in the checkpointer, not in process memory — that is the entire difference from a bare `while`-loop. `MemorySaver` still dies with the process; swap in a SQLite/Postgres checkpointer (separate packages, identical interface) for durability across restarts, which cell 2 and the lab rely on.',
     },
     {
       type: "list",
@@ -60,10 +84,21 @@ print(snapshot.next)          # which node(s) would run next`,
       type: "code",
       language: "python",
       title: "HITL gate before the final answer (Lab 05 requirement)",
-      code: `from langgraph.types import interrupt, Command
+      code: `# Colab cell 2 — run cell 1 first (langgraph installed, MemorySaver
+# imported). No API key needed: this is a real, runnable interrupt/resume.
+from typing import TypedDict
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import interrupt, Command
 
 
-def human_gate(state: ResearchState) -> dict:
+class GateState(TypedDict):
+    draft: str
+    critique: str
+
+
+def human_gate(state: GateState) -> dict:
     # interrupt() checkpoints state and pauses the graph HERE.
     # Its argument is the payload shown to the human.
     decision = interrupt({
@@ -76,18 +111,26 @@ def human_gate(state: ResearchState) -> dict:
     return {"critique": decision["feedback"]}
 
 
-# --- caller side ---
-config = {"configurable": {"thread_id": "research-042"}}
-result = graph.invoke({"question": "..."}, config)
-# result surfaces the pending interrupt payload instead of an answer.
+builder = StateGraph(GateState)
+builder.add_node("human_gate", human_gate)
+builder.add_edge(START, "human_gate")
+builder.add_edge("human_gate", END)
+graph = builder.compile(checkpointer=MemorySaver())
 
-# ...later, possibly in a different process:
+# --- caller side ---
+config = {"configurable": {"thread_id": "gate-001"}}
+graph.invoke({"draft": "The answer is 42.", "critique": ""}, config)
+print("paused at:", graph.get_state(config).next)   # ('human_gate',)
+
+# ...later, possibly in a different process: resume the SAME thread with
+# the human's decision injected as interrupt()'s return value.
 graph.invoke(
     Command(resume={"approved": False, "feedback": "cite sources 2 and 3"}),
     config,
-)`,
+)
+print("resumed; critique:", graph.get_state(config).values["critique"])`,
       explanation:
-        "This uses the `interrupt()` / `Command(resume=...)` pair from recent LangGraph versions; older code used `interrupt_before=[\"node\"]` at compile time plus state edits, and the exact surface may evolve — check your installed version's docs. The mechanics to remember are stable: **checkpoint, stop, return control; resume same thread with the human's value injected**. One subtlety: on resume, the interrupted node re-runs from its top, so keep code before `interrupt()` idempotent.",
+        "This uses the `interrupt()` / `Command(resume=...)` pair from recent LangGraph versions; older code used `interrupt_before=[\"node\"]` at compile time plus state edits, and the exact surface may evolve — check your installed version's docs. The mechanics to remember are stable, and the demo shows them end to end with no key: the first `invoke` runs until `interrupt()`, checkpoints, and stops (`get_state().next` now names the paused node); the second `invoke` resumes the same thread with the human's value injected. One subtlety: on resume, the interrupted node re-runs from its top, so keep code before `interrupt()` idempotent.",
     },
     {
       type: "callout",

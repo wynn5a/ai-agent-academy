@@ -56,11 +56,31 @@ export const lesson05: Lesson = {
       type: "code",
       language: "python",
       title: "baseline comparison harness",
-      code: `import json
+      code: `# Colab cell 1 — pure Python; no API key needed. The two run_* functions
+# are stubs standing in for your systems — Lab 05 wires in the real
+# LangGraph pipeline and single-agent loop; the harness around them is
+# exactly what you'd ship.
+import json
 import time
 
 
-QUESTIONS = load_eval_questions("questions.json")   # the same 10 for both
+QUESTIONS = [                                  # the same set for both conditions
+    "Compare HNSW and IVF vector indexes.",
+    "When should you use hybrid search over dense retrieval?",
+    "What does a reranker buy you?",
+]
+
+
+def run_langgraph_system(q: str):
+    # stub: pretend the multi-agent pipeline ran; return (answer, usage)
+    return (f"[multi] answer to: {q}",
+            {"input_tokens": 9000, "output_tokens": 1200})
+
+
+def run_single_agent_same_tools(q: str):
+    # stub: same task, one agent, same tools — cheaper context
+    return (f"[single] answer to: {q}",
+            {"input_tokens": 3000, "output_tokens": 900})
 
 
 def run_condition(name: str, run_fn) -> list[dict]:
@@ -84,15 +104,21 @@ single = run_condition("single_agent", run_single_agent_same_tools)
 
 with open("comparison_raw.jsonl", "w") as f:
     for row in multi + single:
-        f.write(json.dumps(row) + "\\n")`,
+        f.write(json.dumps(row) + "\\n")
+
+for cond in (multi, single):
+    tok = sum(r["input_tokens"] + r["output_tokens"] for r in cond)
+    print(f"{cond[0]['condition']:12s} total tokens across all calls: {tok:,}")`,
       explanation:
-        "The single-agent baseline gets the **same tools** (search, etc.) and the same model — otherwise you're comparing architectures and capabilities at once and the numbers mean nothing. Usage must be summed across every model call in the multi-agent run, including planner and critic turns; undercounting orchestration cost is the most common way these comparisons lie.",
+        "The single-agent baseline gets the **same tools** (search, etc.) and the same model — otherwise you're comparing architectures and capabilities at once and the numbers mean nothing. Usage must be summed across every model call in the multi-agent run, including planner and critic turns; undercounting orchestration cost is the most common way these comparisons lie. The run_* stubs here just return canned usage so the harness runs end to end — the printed totals show the multi-agent condition already costing multiples of the single-agent one, the pattern Lab 05 measures for real.",
     },
     {
       type: "code",
       language: "python",
       title: "LLM-as-judge scoring (pairwise, order-randomized)",
-      code: `import random
+      code: `# Colab cell 2 — run cell 1 first (it defines multi, single). The judge
+# call is stubbed; Lab 05 swaps in a real structured-output model call.
+import random
 
 JUDGE_PROMPT = """You are grading two research briefs answering:
 {question}
@@ -109,20 +135,30 @@ Score each brief 1-10 per rubric item, then declare a winner.
 Return JSON: {{"a_scores": ..., "b_scores": ..., "winner": "A"|"B"|"tie"}}"""
 
 
+def call_judge_model(prompt: str) -> dict:
+    # stub: Lab 05 makes this a real structured-output call —
+    #   init_chat_model("anthropic:claude-sonnet-5")  or "openai:gpt-5.5"
+    # returning JSON validated against the rubric schema. Canned here so
+    # the position-randomizing harness runs with no key.
+    return {"a_scores": [8, 8, 8], "b_scores": [7, 7, 7], "winner": "A"}
+
+
 def judge(question: str, multi_ans: str, single_ans: str) -> dict:
     # randomize position to cancel the judge's first-position bias
     if random.random() < 0.5:
         a, b, mapping = multi_ans, single_ans, {"A": "multi", "B": "single"}
     else:
         a, b, mapping = single_ans, multi_ans, {"A": "single", "B": "multi"}
-    # judge model: init_chat_model("anthropic:claude-sonnet-5")
-    #          or: init_chat_model("openai:gpt-5.5") — same rubric either way
     verdict = call_judge_model(JUDGE_PROMPT.format(
         question=question, a=a, b=b))          # structured output, JSON schema
     verdict["winner"] = mapping.get(verdict["winner"], "tie")
-    return verdict`,
+    return verdict
+
+
+# judge the first question's two answers from cell 1:
+print(judge(QUESTIONS[0], multi[0]["answer"], single[0]["answer"]))`,
       explanation:
-        'Module 3 habits apply: judges have position bias (randomize order) and need a rubric (not "which is better?"). Get consistency from the rubric and a strict output schema, not a sampling knob — current frontier Claude models reject `temperature`/`top_p`/`top_k` entirely (Module 1), so "run it at temperature 0" isn\'t available; a narrow, structured rubric is what current models rely on for repeatable judging. Spot-check a sample of judgments by hand and report your own rubric scores alongside the judge\'s. If the single agent wins, **say so in the README** — an honest negative result is a stronger portfolio signal than a rigged win.',
+        'Module 3 habits apply: judges have position bias (randomize order) and need a rubric (not "which is better?"). Get consistency from the rubric and a strict output schema, not a sampling knob — current frontier Claude models reject `temperature`/`top_p`/`top_k` entirely (Module 1), so "run it at temperature 0" isn\'t available; a narrow, structured rubric is what current models rely on for repeatable judging. Spot-check a sample of judgments by hand and report your own rubric scores alongside the judge\'s. If the single agent wins, **say so in the README** — an honest negative result is a stronger portfolio signal than a rigged win. The `call_judge_model` stub returns a canned verdict so the position-randomizing wrapper runs with no key; note the `mapping` step un-shuffles "A"/"B" back to "multi"/"single" so your bias fix doesn\'t scramble the results.',
     },
     {
       type: "callout",

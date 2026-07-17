@@ -46,40 +46,77 @@ export const lesson04: Lesson = {
       language: "python",
       title:
         "orchestrator-workers in LangGraph: planner fans out, workers reduce",
-      code: `# The orchestrator-worker shape, using the Lesson 2 schema.
-# planner -> N parallel searchers -> writer -> critic (loop) -> END
+      code: `# Colab cell 1 — run once. No API key needed; the model calls are stubbed
+# so the orchestrator-worker shape runs on LangGraph's machinery alone.
+# planner -> N parallel searchers (fan-out) -> writer -> END
+!pip install -q langgraph
+
+import operator
+from typing import Annotated, TypedDict
+
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+
+
+class ResearchState(TypedDict):
+    question: str
+    plan: list[str]
+    findings: Annotated[list[str], operator.add]   # reducer merges parallel writes
+    draft: str
+
+
+# --- stubbed model calls (Module 1 would make these real) ---
+def plan_with_llm(question: str) -> list[str]:
+    return [f"{question} — angle {i}" for i in (1, 2, 3)]
+
+def search_and_summarize(task: str) -> str:
+    return f"evidence for [{task}]"
+
+def write_with_llm(question: str, findings: list[str]) -> str:
+    return f"Draft for {question!r} citing {len(findings)} findings."
 
 
 def planner(state: ResearchState) -> dict:
     # One model call: decompose the question into concrete,
     # independently-searchable subtasks. Force structured output
     # (Module 1 skills) so 'plan' is a clean list, not prose.
-    subtasks = plan_with_llm(state["question"])   # -> list[str]
-    return {"plan": subtasks}
-
-
-def make_searcher_input(subtask: str) -> dict:
-    # each parallel searcher run receives ONE subtask as its input
-    return {"task": subtask}
+    return {"plan": plan_with_llm(state["question"])}
 
 
 def searcher(worker_input: dict) -> dict:
+    # receives ONE subtask (the Send payload), not the whole state
     evidence = search_and_summarize(worker_input["task"])
-    # reducer on 'findings' (operator.add) merges parallel writes
-    return {"findings": [evidence]}
+    return {"findings": [evidence]}   # reducer appends parallel writes
 
 
 def writer(state: ResearchState) -> dict:
-    draft = write_with_llm(state["question"], state["findings"],
-                           feedback=state.get("critique", ""))
-    return {"draft": draft}
+    return {"draft": write_with_llm(state["question"], state["findings"])}
 
-# Fan-out wiring: a conditional edge after 'planner' dispatches one
-# searcher run per subtask (LangGraph's Send-style dispatch API --
-# exact call signature varies by version; the map/reduce concept
-# is the stable part).`,
+
+# Fan-out: a conditional edge after 'planner' returns one Send per
+# subtask, each carrying its own slice of state. (The Send API's exact
+# signature varies by LangGraph version; the map/reduce concept is the
+# stable part.)
+def fan_out_to_searchers(state: ResearchState) -> list[Send]:
+    return [Send("searcher", {"task": task}) for task in state["plan"]]
+
+
+builder = StateGraph(ResearchState)
+builder.add_node("planner", planner)
+builder.add_node("searcher", searcher)
+builder.add_node("writer", writer)
+builder.add_edge(START, "planner")
+builder.add_conditional_edges("planner", fan_out_to_searchers, ["searcher"])
+builder.add_edge("searcher", "writer")
+builder.add_edge("writer", END)
+graph = builder.compile()
+
+result = graph.invoke({"question": "How do vector index types differ?",
+                       "plan": [], "findings": [], "draft": ""})
+print(result["findings"])   # one per subtask, merged by the reducer
+print(result["draft"])`,
       explanation:
-        "Notice what makes this orchestrator-workers rather than one agent with tools: each searcher runs with a **clean, small context** containing only its subtask — not the whole conversation — and they run **in parallel**. Those are two of the three legitimate reasons to go multi-agent (Lesson 5). The writer never sees raw search transcripts, only distilled findings.",
+        "Notice what makes this orchestrator-workers rather than one agent with tools: each searcher runs with a **clean, small context** containing only its subtask (the `Send` payload) — not the whole conversation — and they run **in parallel**, their results merged by the `operator.add` reducer on `findings`. Those are two of the three legitimate reasons to go multi-agent (Lesson 5). The writer never sees raw search transcripts, only distilled findings. It all runs with no key because the three model calls are stubbed — swap them for real ones (Module 1) without touching the graph.",
     },
     {
       type: "heading",
@@ -93,7 +130,11 @@ def writer(state: ResearchState) -> dict:
       type: "code",
       language: "python",
       title: "structured briefs + logged handoffs (Lab 05 requirement)",
-      code: `import json
+      code: `# Colab cell 2 — run cell 1 first (it defines graph). Pure Python + pydantic;
+# no API key needed.
+!pip install -q pydantic
+
+import json
 import time
 from pydantic import BaseModel
 
@@ -122,9 +163,16 @@ def planner_to_searcher_brief(subtask: str, question: str) -> HandoffBrief:
         constraints=["cite the source of every claim",
                      "return at most 5 bullet findings"],
         expected_output="bulleted findings, each with a source",
-    )`,
+    )
+
+
+brief = planner_to_searcher_brief("compare HNSW vs IVF recall",
+                                  "How do vector index types differ?")
+log_handoff(brief)                       # appends one line to handoffs.jsonl
+print(brief.task, "->", brief.expected_output)
+print(open("handoffs.jsonl").read().strip())`,
       explanation:
-        "Every handoff in Lab 05 gets built as a `HandoffBrief` and logged before the receiver runs. The log serves two masters: **debugging** (when the writer produces garbage, read the brief it received — the bug is usually there, not in the writer) and the **inter-agent trace** your baseline comparison and README need. Pydantic gives you validation for free: a brief missing `expected_output` fails at construction, not three agents downstream.",
+        "Every handoff in Lab 05 gets built as a `HandoffBrief` and logged before the receiver runs. The log serves two masters: **debugging** (when the writer produces garbage, read the brief it received — the bug is usually there, not in the writer) and the **inter-agent trace** your baseline comparison and README need. Pydantic gives you validation for free: a brief missing `expected_output` fails at construction, not three agents downstream. The demo builds one brief, logs it, and reads the JSONL line back — that file is the inter-agent trace your README and baseline comparison need.",
     },
     {
       type: "callout",
