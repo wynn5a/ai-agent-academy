@@ -334,7 +334,7 @@ def main(argv: list[str]) -> int:
         if dupes:
             print("  note: repeated animation(s) across scope: "
                   + ", ".join(dupes) + " — fine if intentional, flag if accidental reuse")
-    print("\n(reminder: this is the mechanical floor. The seven-standard review "
+    print("\n(reminder: this is the mechanical floor. The eight-standard review "
           "is the actual verification — read the content.)")
     return 0
 

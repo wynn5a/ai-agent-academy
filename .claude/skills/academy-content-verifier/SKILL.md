@@ -4,10 +4,11 @@ description: >-
   Quality verifier for Agent Engineering Academy course content. Use this
   whenever the user wants to verify, review, check, audit, QA, proofread, or
   "grade" Academy learning content — a single lesson, a whole module, a few
-  lessons, or any combination — against the Academy's seven quality standards:
+  lessons, or any combination — against the Academy's eight quality standards:
   factual accuracy, clarity/fluency, comprehensive depth, Anthropic+OpenAI
   compatibility, engaging interactivity, effective tables/diagrams/animations,
-  and Senior AI Agent Engineer role alignment. Trigger it for requests like "is
+  Senior AI Agent Engineer role alignment, and native-level prose quality (no
+  AI-slop tells). Trigger it for requests like "is
   this lesson accurate?", "review module 5", "check the provider coverage
   here", "does this meet our bar?", "fact-check the streaming lesson", or right
   before shipping/committing new or edited files under content/modules/. It
@@ -26,7 +27,7 @@ one level above the repo). Content lives as typed data literals under
 first if you haven't — it explains the content schema, dual-provider tabs, and
 conventions.
 
-Your job is to hold that content to seven standards and report where it falls
+Your job is to hold that content to eight standards and report where it falls
 short — precisely, honestly, and with the reasoning a senior reviewer would
 give. You are a reviewer, not an editor: **report by default, fix only when the
 user explicitly asks.**
@@ -73,7 +74,7 @@ pnpm exec tsc --noEmit    # or `pnpm lint` if tsc isn't wired up
 ```
 
 Fold anything these surface into the report, but they are a floor, not the
-review. The seven standards below are the review.
+review. The eight standards below are the review.
 
 ### 2. Deep read
 
@@ -94,7 +95,7 @@ verify it against a current primary source (provider docs via Context7 or
 don't assert it's wrong just because you couldn't confirm it). Don't burn time
 re-checking timeless facts (what softmax is); concentrate on what actually rots.
 
-### 4. Score against the seven standards
+### 4. Score against the eight standards
 
 Judge each standard using the rubric below. For each, give a verdict
 (✅ Strong / 🟡 Adequate / 🟠 Needs work / 🔴 At risk) and the specific evidence
@@ -118,7 +119,7 @@ surrounding voice and section idiom exactly — this content has a distinctive
 register (direct, senior, interview-aware); a fix that reads as generic is a
 regression even if it's accurate.
 
-## The seven standards
+## The eight standards
 
 Each has a *why* (what it protects), *what good looks like*, and *smells* (what a
 finding looks like). Use judgment — these describe the intent, they aren't a
@@ -205,6 +206,28 @@ with no signal to the learner that it's interview-critical; time spent on
 low-value tangents the market doesn't ask for; a `career` callout that overclaims
 what interviewers actually screen for (cross-check the research doc).
 
+### 8. Native-level prose quality
+**Why:** the content is selling senior credibility, and prose that reads as
+generic AI output quietly spends it. A learner who absorbs hedge-everything,
+buzzword-padded phrasing carries it into interviews and write-ups, where it reads
+as someone who has skimmed the topic rather than shipped it. The writing should
+sound like a fluent engineer who has done the work explaining it to a peer.
+**Good:** sentences are direct and specific; claims are stated plainly instead of
+cushioned; word choice is precise and idiomatic; rhythm varies (a short line
+lands after a longer one); the register matches the exemplar — confident, senior,
+occasionally dry — and reads as one human voice throughout.
+**Smells:** the usual AI tells — opener/closer filler ("In today's fast-paced
+world", "It's worth noting that", "Let's dive in", "In conclusion"); hollow
+intensifiers and buzzwords standing in for substance (*crucial, powerful,
+seamless, robust, cutting-edge, leverage, delve, unlock, harness*); mechanical
+scaffolding ("not only X but also Y", relentless rule-of-three triads, every
+paragraph the same length and shape); hedging that carries no information ("can
+potentially help in a variety of ways"); em-dash-and-restate used as filler
+rather than for emphasis; a tidy summary sentence that repeats what was just said.
+Judge by ear: read a passage aloud and ask whether a senior engineer would
+actually write it that way, or whether it reads as text a model generated to fill
+space. Quote the offending phrase and rewrite it in the exemplar's voice.
+
 ## Report template
 
 ```markdown
@@ -221,6 +244,7 @@ _Date: <YYYY-MM-DD> · Files: <list>_
 | 5. Engaging interactivity | … | … |
 | 6. Tables/diagrams/animations | … | … |
 | 7. Role alignment | … | … |
+| 8. Native-level prose | … | … |
 
 **Overall:** <2–3 sentences: ship as-is / fix blockers first / etc.>
 
