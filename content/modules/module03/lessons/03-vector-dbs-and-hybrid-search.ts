@@ -15,13 +15,56 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "Qdrant local: create, upsert, query",
-      code: `from qdrant_client import QdrantClient
+      code: `# Colab cell 1 — run once (local embedding model + embedded vector DB;
+# no server, no API key needed).
+!pip install -q qdrant-client sentence-transformers
+
+from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
 
 encoder = SentenceTransformer("all-MiniLM-L6-v2")
 qdrant = QdrantClient(path="./qdrant_data")     # embedded local mode — a directory, not a server
 
+# A small pre-chunked corpus — the shape lesson 2's structural chunker
+# emits — so retrieval has something real to search.
+chunks = [
+    {"doc_id": "runbook", "heading": "Retry configuration",
+     "text": "Set retry_backoff_max to cap exponential backoff at 60 seconds. "
+             "Workers retry failed jobs five times before dead-lettering."},
+    {"doc_id": "runbook", "heading": "Connection errors",
+     "text": "ERR_CONN_5031 means the gateway dropped a keep-alive connection. "
+             "Restart the connection pool or raise the idle timeout."},
+    {"doc_id": "faq", "heading": "Account access",
+     "text": "To reset your password, open Settings, choose Security, and "
+             "select 'Send reset link'. The link expires after one hour."},
+    {"doc_id": "faq", "heading": "Billing",
+     "text": "Invoices are issued on the first of each month. Enterprise "
+             "plans can switch to quarterly billing in the console."},
+    {"doc_id": "guide", "heading": "Ingestion pipeline",
+     "text": "Large PDFs are split into pages before parsing. Ingestion "
+             "jobs that stall usually hit the 50 MB per-file limit."},
+    {"doc_id": "guide", "heading": "Search tuning",
+     "text": "Hybrid search fuses BM25 and dense rankings with reciprocal "
+             "rank fusion. Tune top-k on a labeled eval set."},
+    {"doc_id": "guide", "heading": "Single sign-on",
+     "text": "SAML SSO is available on enterprise plans. Configure the "
+             "identity provider under Settings > Authentication."},
+    {"doc_id": "runbook", "heading": "Deployments",
+     "text": "Deploys roll out region by region. A failed health check "
+             "pauses the rollout and pages the on-call engineer."},
+    {"doc_id": "guide", "heading": "Data retention",
+     "text": "Event logs are retained for 90 days by default. EU tenants "
+             "can shorten retention to 30 days for compliance."},
+    {"doc_id": "faq", "heading": "Plan changes",
+     "text": "Upgrades apply immediately; downgrades take effect at the "
+             "next billing cycle. Seat counts adjust pro rata."},
+]
+for c in chunks:
+    c["embed_text"] = f"{c['heading']}\\n{c['text']}"
+
+if qdrant.collection_exists("docs"):    # safe to re-run the cell
+    qdrant.delete_collection("docs")
 qdrant.create_collection(
     collection_name="docs",
     vectors_config=VectorParams(size=384, distance=Distance.COSINE),
@@ -33,7 +76,7 @@ points = [
         vector=encoder.encode(c["embed_text"]).tolist(),
         payload={"text": c["text"], "doc_id": c["doc_id"], "heading": c["heading"]},
     )
-    for i, c in enumerate(chunks)          # chunks from Lesson 2's chunker
+    for i, c in enumerate(chunks)
 ]
 qdrant.upsert(collection_name="docs", points=points)
 
@@ -45,7 +88,7 @@ hits = qdrant.query_points(
 for h in hits:
     print(f"{h.score:.3f}  [{h.payload['doc_id']}] {h.payload['heading']}")`,
       explanation:
-        "The payload carries the chunk text and citation metadata alongside the vector, so one query returns everything the generator needs. Batch-encode in production (`encoder.encode(list_of_texts)`) — per-chunk encoding is the classic accidental 50× slowdown of ingestion.",
+        "The payload carries the chunk text and citation metadata alongside the vector, so one query returns everything the generator needs. Batch-encode in production (`encoder.encode(list_of_texts)`) — per-chunk encoding is the classic accidental 50× slowdown of ingestion. The inline corpus stands in for lesson 2's chunker output, and the delete-if-exists guard makes the cell safe to re-run.",
     },
     {
       type: "heading",
@@ -86,7 +129,10 @@ for h in hits:
       type: "code",
       language: "python",
       title: "hybrid retrieval: BM25 + dense, fused with RRF",
-      code: `import numpy as np
+      code: `# Colab cell 2 — run cell 1 first (it defines chunks, encoder, qdrant).
+!pip install -q rank-bm25
+
+import numpy as np
 from rank_bm25 import BM25Okapi
 
 tokenized = [c["text"].lower().split() for c in chunks]
@@ -112,7 +158,11 @@ def rrf_fuse(rankings: list[list[int]], k: int = 60, top: int = 50) -> list[int]
     return sorted(scores, key=lambda cid: scores[cid], reverse=True)[:top]
 
 def hybrid_search(query: str, top: int = 50) -> list[int]:
-    return rrf_fuse([dense_search(query), bm25_search(query)], top=top)`,
+    return rrf_fuse([dense_search(query), bm25_search(query)], top=top)
+
+# demo: the exact-ID query dense retrieval fumbles — watch BM25 carry it
+for cid in hybrid_search("what does ERR_CONN_5031 mean", top=5):
+    print(f"[{cid}] {chunks[cid]['heading']}: {chunks[cid]['text'][:48]}...")`,
       explanation:
         "Note that RRF never looks at a raw score — only at positions. A chunk ranked #1 by BM25 and #40 by dense still fuses high, which is the desired behavior for an exact-ID query that dense fumbled. Keep each retriever toggleable behind a config flag: your Lab 03 eval report compares dense-only vs. BM25-only vs. hybrid, and that requires running each in isolation.",
     },

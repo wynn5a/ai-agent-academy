@@ -55,7 +55,8 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "fixed-size chunker with overlap",
-      code: `def fixed_size_chunks(text: str, size: int = 350, overlap: int = 50) -> list[str]:
+      code: `# Colab cell 1 — pure Python: runs with no key and no installs.
+def fixed_size_chunks(text: str, size: int = 350, overlap: int = 50) -> list[str]:
     """Split into word windows of ~size words, consecutive windows sharing
     'overlap' words so boundary-straddling facts survive in one piece."""
     words = text.split()
@@ -66,9 +67,15 @@ export const lesson02: Lesson = {
         if end == len(words):
             break
         start = end - overlap          # step back to create the overlap
-    return chunks`,
+    return chunks
+
+# demo: numbered words make the shared boundary regions visible
+demo_text = " ".join(f"w{i}" for i in range(1, 121))   # w1 ... w120
+for piece in fixed_size_chunks(demo_text, size=50, overlap=10):
+    words = piece.split()
+    print(f"{len(words):>3} words: {words[0]} ... {words[-1]}")`,
       explanation:
-        "Word-based sizing is a fine proxy (a word is roughly 1.3 tokens in English); swap in a real tokenizer when you need exact budgets. The overlap is the load-bearing part: without it, any fact within a few sentences of a cut is fragmented across two chunks and retrieves poorly from both.",
+        "Word-based sizing is a fine proxy (a word is roughly 1.3 tokens in English); swap in a real tokenizer when you need exact budgets. The overlap is the load-bearing part: without it, any fact within a few sentences of a cut is fragmented across two chunks and retrieves poorly from both. The numbered-word demo makes it visible — each window starts ten words before the previous one ended.",
     },
     {
       type: "exercise",
@@ -94,7 +101,8 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "structural chunker for markdown, with citation metadata",
-      code: `import re
+      code: `# Colab cell 2 — run cell 1 first (it defines fixed_size_chunks).
+import re
 
 def structural_chunks(md: str, doc_id: str,
                       max_words: int = 350, overlap: int = 50) -> list[dict]:
@@ -118,7 +126,21 @@ def structural_chunks(md: str, doc_id: str,
                 "text": piece,
                 "embed_text": f"{heading}\\n{piece}",   # heading rides into the embedding
             })
-    return chunks`,
+    return chunks
+
+SAMPLE_MD = """# Acme Gateway runbook
+
+## Retry configuration
+Set retry_backoff_max to cap exponential backoff. Workers retry failed
+jobs up to five times before dead-lettering.
+
+## Connection errors
+ERR_CONN_5031 means the gateway dropped a keep-alive connection.
+Restart the connection pool or raise the idle timeout.
+"""
+
+for c in structural_chunks(SAMPLE_MD, doc_id="runbook"):
+    print(f"[{c['doc_id']} / {c['heading']} / #{c['position']}] {c['text'][:48]}...")`,
       explanation:
         'Two tricks worth stealing: (1) the metadata (`doc_id`, `heading`, `position`) is what makes citations possible later — store it now or regret it; (2) embedding `heading + text` instead of bare text injects section context into the vector, so a chunk that just says "set this flag to true" still retrieves for queries about the feature its heading names.',
     },

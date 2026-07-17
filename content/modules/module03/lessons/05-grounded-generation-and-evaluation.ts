@@ -15,7 +15,60 @@ export const lesson05: Lesson = {
       type: "code",
       language: "python",
       title: "grounded generation with checkable citations",
-      code: `def generate_grounded(query: str, chunk_ids: list[int]) -> dict:
+      code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import re
+import anthropic
+
+llm = anthropic.Anthropic()
+
+# The same small pre-chunked corpus as lessons 3-4.
+chunks = [
+    {"doc_id": "runbook", "heading": "Retry configuration",
+     "text": "Set retry_backoff_max to cap exponential backoff at 60 seconds. "
+             "Workers retry failed jobs five times before dead-lettering."},
+    {"doc_id": "runbook", "heading": "Connection errors",
+     "text": "ERR_CONN_5031 means the gateway dropped a keep-alive connection. "
+             "Restart the connection pool or raise the idle timeout."},
+    {"doc_id": "faq", "heading": "Account access",
+     "text": "To reset your password, open Settings, choose Security, and "
+             "select 'Send reset link'. The link expires after one hour."},
+    {"doc_id": "faq", "heading": "Billing",
+     "text": "Invoices are issued on the first of each month. Enterprise "
+             "plans can switch to quarterly billing in the console."},
+    {"doc_id": "guide", "heading": "Ingestion pipeline",
+     "text": "Large PDFs are split into pages before parsing. Ingestion "
+             "jobs that stall usually hit the 50 MB per-file limit."},
+    {"doc_id": "guide", "heading": "Search tuning",
+     "text": "Hybrid search fuses BM25 and dense rankings with reciprocal "
+             "rank fusion. Tune top-k on a labeled eval set."},
+    {"doc_id": "guide", "heading": "Single sign-on",
+     "text": "SAML SSO is available on enterprise plans. Configure the "
+             "identity provider under Settings > Authentication."},
+    {"doc_id": "runbook", "heading": "Deployments",
+     "text": "Deploys roll out region by region. A failed health check "
+             "pauses the rollout and pages the on-call engineer."},
+    {"doc_id": "guide", "heading": "Data retention",
+     "text": "Event logs are retained for 90 days by default. EU tenants "
+             "can shorten retention to 30 days for compliance."},
+    {"doc_id": "faq", "heading": "Plan changes",
+     "text": "Upgrades apply immediately; downgrades take effect at the "
+             "next billing cycle. Seat counts adjust pro rata."},
+]
+for c in chunks:
+    c["embed_text"] = f"{c['heading']}\\n{c['text']}"
+
+def generate_grounded(query: str, chunk_ids: list[int]) -> dict:
     context = "\\n\\n".join(
         f"[{i + 1}] (source: {chunks[cid]['doc_id']} / {chunks[cid]['heading']})\\n"
         f"{chunks[cid]['text']}"
@@ -40,14 +93,72 @@ export const lesson05: Lesson = {
     valid = [c for c in cited if 1 <= c <= len(chunk_ids)]
     return {"answer": answer, "cited_passages": valid,
             "invalid_citations": [c for c in cited if c not in valid],
-            "chunk_ids": chunk_ids}`,
+            "chunk_ids": chunk_ids}
+
+# ids picked by hand here; in the lab they come from lesson 4's retrieve_pipeline
+result = generate_grounded("How do I reset my password?", [2, 0, 5])
+print(result["answer"])
+print("cited:", result["cited_passages"], " invalid:", result["invalid_citations"])`,
       explanation:
         "Three load-bearing choices: an explicit refusal string (so \"can't answer\" is machine-detectable, not prose), parsing the citation markers back out, and **validating them against the passages that actually exist** — a model that cites [7] when you sent five passages just told you, for free, that it's fabricating; log `invalid_citations` as a first-class unfaithfulness signal. In the eval harness the same parse also checks whether the *right* sources got cited.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `def generate_grounded(query: str, chunk_ids: list[int]) -> dict:
+          code: `# Colab cell 1 — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import re
+from openai import OpenAI
+
+llm = OpenAI()
+
+# The same small pre-chunked corpus as lessons 3-4.
+chunks = [
+    {"doc_id": "runbook", "heading": "Retry configuration",
+     "text": "Set retry_backoff_max to cap exponential backoff at 60 seconds. "
+             "Workers retry failed jobs five times before dead-lettering."},
+    {"doc_id": "runbook", "heading": "Connection errors",
+     "text": "ERR_CONN_5031 means the gateway dropped a keep-alive connection. "
+             "Restart the connection pool or raise the idle timeout."},
+    {"doc_id": "faq", "heading": "Account access",
+     "text": "To reset your password, open Settings, choose Security, and "
+             "select 'Send reset link'. The link expires after one hour."},
+    {"doc_id": "faq", "heading": "Billing",
+     "text": "Invoices are issued on the first of each month. Enterprise "
+             "plans can switch to quarterly billing in the console."},
+    {"doc_id": "guide", "heading": "Ingestion pipeline",
+     "text": "Large PDFs are split into pages before parsing. Ingestion "
+             "jobs that stall usually hit the 50 MB per-file limit."},
+    {"doc_id": "guide", "heading": "Search tuning",
+     "text": "Hybrid search fuses BM25 and dense rankings with reciprocal "
+             "rank fusion. Tune top-k on a labeled eval set."},
+    {"doc_id": "guide", "heading": "Single sign-on",
+     "text": "SAML SSO is available on enterprise plans. Configure the "
+             "identity provider under Settings > Authentication."},
+    {"doc_id": "runbook", "heading": "Deployments",
+     "text": "Deploys roll out region by region. A failed health check "
+             "pauses the rollout and pages the on-call engineer."},
+    {"doc_id": "guide", "heading": "Data retention",
+     "text": "Event logs are retained for 90 days by default. EU tenants "
+             "can shorten retention to 30 days for compliance."},
+    {"doc_id": "faq", "heading": "Plan changes",
+     "text": "Upgrades apply immediately; downgrades take effect at the "
+             "next billing cycle. Seat counts adjust pro rata."},
+]
+for c in chunks:
+    c["embed_text"] = f"{c['heading']}\\n{c['text']}"
+
+def generate_grounded(query: str, chunk_ids: list[int]) -> dict:
     context = "\\n\\n".join(
         f"[{i + 1}] (source: {chunks[cid]['doc_id']} / {chunks[cid]['heading']})\\n"
         f"{chunks[cid]['text']}"
@@ -72,7 +183,12 @@ export const lesson05: Lesson = {
     valid = [c for c in cited if 1 <= c <= len(chunk_ids)]
     return {"answer": answer, "cited_passages": valid,
             "invalid_citations": [c for c in cited if c not in valid],
-            "chunk_ids": chunk_ids}`,
+            "chunk_ids": chunk_ids}
+
+# ids picked by hand here; in the lab they come from lesson 4's retrieve_pipeline
+result = generate_grounded("How do I reset my password?", [2, 0, 5])
+print(result["answer"])
+print("cited:", result["cited_passages"], " invalid:", result["invalid_citations"])`,
           explanation:
             "The grounding rules go in `instructions` (OpenAI's name for the system prompt, vs. Anthropic's `system` param), `max_tokens` is optional here where the Messages API requires it, and the answer is simply `resp.output_text`. Everything that makes this snippet worth stealing — the exact refusal string, citation parsing, and out-of-range validation — is identical across providers.",
         },
@@ -107,7 +223,42 @@ export const lesson05: Lesson = {
       type: "code",
       language: "python",
       title: "the eval harness: every config, every metric, one table",
-      code: `import json
+      code: `# Colab cell 2 — run cell 1 first (it defines chunks). This cell rebuilds
+# lesson 4's compact retrieval stack, then scores every config side by side.
+!pip install -q sentence-transformers rank-bm25
+
+import numpy as np
+from rank_bm25 import BM25Okapi
+from sentence_transformers import CrossEncoder, SentenceTransformer
+
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+doc_vecs = encoder.encode([c["embed_text"] for c in chunks],
+                          normalize_embeddings=True)
+bm25 = BM25Okapi([c["text"].lower().split() for c in chunks])
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+def dense_search(query: str, k: int = 50) -> list[int]:
+    q = encoder.encode(query, normalize_embeddings=True)
+    return [int(i) for i in np.argsort(doc_vecs @ q)[::-1][:k]]
+
+def bm25_search(query: str, k: int = 50) -> list[int]:
+    scores = bm25.get_scores(query.lower().split())
+    return [int(i) for i in np.argsort(scores)[::-1][:k]]
+
+def rrf_fuse(rankings: list[list[int]], k: int = 60, top: int = 50) -> list[int]:
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank + 1)
+    return sorted(scores, key=lambda cid: scores[cid], reverse=True)[:top]
+
+def hybrid_search(query: str, top: int = 50) -> list[int]:
+    return rrf_fuse([dense_search(query), bm25_search(query)], top=top)
+
+def rerank(query: str, candidate_ids: list[int], top: int = 5) -> list[int]:
+    pairs = [(query, chunks[cid]["text"]) for cid in candidate_ids]
+    order = np.argsort(reranker.predict(pairs))[::-1][:top]
+    return [candidate_ids[i] for i in order]
 
 def precision_at_k(retrieved: list[int], relevant: set[int], k: int = 5) -> float:
     top = retrieved[:k]
@@ -129,7 +280,19 @@ CONFIGS = {
     "hybrid+rerank": lambda q: rerank(q, hybrid_search(q, top=50), top=5),
 }
 
-eval_set = json.load(open("eval_set.json"))   # [{question, answer, relevant_chunk_ids}]
+# In Lab 03 this is a labeled JSON file; inline items keep the cell runnable.
+eval_set = [
+    {"question": "How do I get back into my account?",
+     "relevant_chunk_ids": [2]},
+    {"question": "What does ERR_CONN_5031 mean?",
+     "relevant_chunk_ids": [1]},
+    {"question": "Why do ingestion jobs stall on big PDFs?",
+     "relevant_chunk_ids": [4]},
+    {"question": "How often do we send invoices?",
+     "relevant_chunk_ids": [3]},
+    {"question": "How long are event logs kept in the EU?",
+     "relevant_chunk_ids": [8]},
+]
 
 for name, search in CONFIGS.items():
     p, r, rr = [], [], []
@@ -142,7 +305,7 @@ for name, search in CONFIGS.items():
     n = len(eval_set)
     print(f"{name:14s} P@5={sum(p)/n:.3f}  R@5={sum(r)/n:.3f}  MRR={sum(rr)/n:.3f}")`,
       explanation:
-        "This loop — four configs, three metrics, one comparison table — *is* Lab 03's deliverable and the artifact a hiring panel wants to see. Diagnostic reading: high recall + low precision → rerank harder or retrieve fewer; low recall → fix chunking or add the missing retrieval mode; good retrieval numbers but wrong final answers → the problem is *generation*, so look at faithfulness next.",
+        "This loop — four configs, three metrics, one comparison table — *is* Lab 03's deliverable and the artifact a hiring panel wants to see. Diagnostic reading: high recall + low precision → rerank harder or retrieve fewer; low recall → fix chunking or add the missing retrieval mode; good retrieval numbers but wrong final answers → the problem is *generation*, so look at faithfulness next. With a ten-chunk corpus the absolute numbers are toys (MRR separates the configs most visibly here); Lab 03's labeled set over a real corpus is where the deltas become meaningful.",
     },
     {
       type: "callout",

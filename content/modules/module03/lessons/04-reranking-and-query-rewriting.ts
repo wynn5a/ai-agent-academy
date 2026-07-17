@@ -50,8 +50,73 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "cross-encoder reranking: top-50 in, top-5 out",
-      code: `import numpy as np
-from sentence_transformers import CrossEncoder
+      code: `# Colab cell 1 — run once; no API key needed. Compactly rebuilds
+# lesson 3's hybrid stack (numpy dense + BM25 + RRF, same interface,
+# no vector DB) so this notebook stands alone, then adds the reranker.
+!pip install -q sentence-transformers rank-bm25
+
+import numpy as np
+from rank_bm25 import BM25Okapi
+from sentence_transformers import CrossEncoder, SentenceTransformer
+
+# The same small pre-chunked corpus as lesson 3.
+chunks = [
+    {"doc_id": "runbook", "heading": "Retry configuration",
+     "text": "Set retry_backoff_max to cap exponential backoff at 60 seconds. "
+             "Workers retry failed jobs five times before dead-lettering."},
+    {"doc_id": "runbook", "heading": "Connection errors",
+     "text": "ERR_CONN_5031 means the gateway dropped a keep-alive connection. "
+             "Restart the connection pool or raise the idle timeout."},
+    {"doc_id": "faq", "heading": "Account access",
+     "text": "To reset your password, open Settings, choose Security, and "
+             "select 'Send reset link'. The link expires after one hour."},
+    {"doc_id": "faq", "heading": "Billing",
+     "text": "Invoices are issued on the first of each month. Enterprise "
+             "plans can switch to quarterly billing in the console."},
+    {"doc_id": "guide", "heading": "Ingestion pipeline",
+     "text": "Large PDFs are split into pages before parsing. Ingestion "
+             "jobs that stall usually hit the 50 MB per-file limit."},
+    {"doc_id": "guide", "heading": "Search tuning",
+     "text": "Hybrid search fuses BM25 and dense rankings with reciprocal "
+             "rank fusion. Tune top-k on a labeled eval set."},
+    {"doc_id": "guide", "heading": "Single sign-on",
+     "text": "SAML SSO is available on enterprise plans. Configure the "
+             "identity provider under Settings > Authentication."},
+    {"doc_id": "runbook", "heading": "Deployments",
+     "text": "Deploys roll out region by region. A failed health check "
+             "pauses the rollout and pages the on-call engineer."},
+    {"doc_id": "guide", "heading": "Data retention",
+     "text": "Event logs are retained for 90 days by default. EU tenants "
+             "can shorten retention to 30 days for compliance."},
+    {"doc_id": "faq", "heading": "Plan changes",
+     "text": "Upgrades apply immediately; downgrades take effect at the "
+             "next billing cycle. Seat counts adjust pro rata."},
+]
+for c in chunks:
+    c["embed_text"] = f"{c['heading']}\\n{c['text']}"
+
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+doc_vecs = encoder.encode([c["embed_text"] for c in chunks],
+                          normalize_embeddings=True)
+bm25 = BM25Okapi([c["text"].lower().split() for c in chunks])
+
+def dense_search(query: str, k: int = 50) -> list[int]:
+    q = encoder.encode(query, normalize_embeddings=True)
+    return [int(i) for i in np.argsort(doc_vecs @ q)[::-1][:k]]
+
+def bm25_search(query: str, k: int = 50) -> list[int]:
+    scores = bm25.get_scores(query.lower().split())
+    return [int(i) for i in np.argsort(scores)[::-1][:k]]
+
+def rrf_fuse(rankings: list[list[int]], k: int = 60, top: int = 50) -> list[int]:
+    scores: dict[int, float] = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking):
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank + 1)
+    return sorted(scores, key=lambda cid: scores[cid], reverse=True)[:top]
+
+def hybrid_search(query: str, top: int = 50) -> list[int]:
+    return rrf_fuse([dense_search(query), bm25_search(query)], top=top)
 
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")  # small, local
 
@@ -65,9 +130,13 @@ def retrieve_pipeline(query: str, use_rerank: bool = True) -> list[int]:
     candidates = hybrid_search(query, top=50)     # recall stage (Lesson 3)
     if use_rerank:
         return rerank(query, candidates, top=5)   # precision stage
-    return candidates[:5]`,
+    return candidates[:5]
+
+q = "what does ERR_CONN_5031 mean"
+print("without rerank:", [chunks[c]["heading"] for c in retrieve_pipeline(q, use_rerank=False)])
+print("with rerank:   ", [chunks[c]["heading"] for c in retrieve_pipeline(q)])`,
       explanation:
-        'Fifty pair-scorings with a small cross-encoder take a fraction of a second on CPU — trivially worth it for the precision gain, which is why "add a reranker" is the standard first answer to "my RAG retrieves junk." Keep the `use_rerank` flag: the eval report needs hybrid vs. hybrid+rerank as separate rows. Hosted reranking APIs (e.g. Cohere\'s) are the managed version of the same idea.',
+        'Fifty pair-scorings with a small cross-encoder take a fraction of a second on CPU — trivially worth it for the precision gain, which is why "add a reranker" is the standard first answer to "my RAG retrieves junk." Keep the `use_rerank` flag: the eval report needs hybrid vs. hybrid+rerank as separate rows. Hosted reranking APIs (e.g. Cohere\'s) are the managed version of the same idea. The top half of the cell rebuilds lesson 3\'s hybrid stack over numpy — same interface, no vector DB — so this notebook runs on its own.',
     },
     {
       type: "heading",
@@ -97,7 +166,19 @@ def retrieve_pipeline(query: str, use_rerank: bool = True) -> list[int]:
       type: "code",
       language: "python",
       title: "HyDE and decomposition with the raw SDK",
-      code: `import anthropic
+      code: `# Colab cell 2 — run cell 1 first (it defines chunks, encoder, doc_vecs).
+# Set your key in the 🔑 panel (name it ANTHROPIC_API_KEY) or paste it.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
 
 llm = anthropic.Anthropic()
 
@@ -135,15 +216,33 @@ def decompose(query: str) -> list[str]:
     block = next(b for b in resp.content if b.type == "tool_use")
     return block.input["questions"]
 
-# usage: search with the hypothetical answer, not the raw question
-probe_vec = encoder.encode(hyde_probe("why do ingestion jobs stall on large PDFs?"))`,
+print(decompose("How does our EU retention policy differ from the US one?"))
+
+# search with the hypothetical answer, not the raw question
+probe = hyde_probe("why do ingestion jobs stall on large PDFs?")
+print("HyDE probe:", probe[:80] + "...")
+q_vec = encoder.encode(probe, normalize_embeddings=True)      # encoder from cell 1
+top = [int(i) for i in np.argsort(doc_vecs @ q_vec)[::-1][:3]]
+print("HyDE retrieves:", [chunks[i]["heading"] for i in top])`,
       explanation:
         "Both techniques reuse Module 1 machinery — HyDE is a plain completion, decomposition is the forced-tool-call structured-output trick. For multi-hop queries: decompose, run `retrieve_pipeline` per sub-question, deduplicate the union of chunks, then generate one answer over all of them.",
       provider: "claude",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell 2 — run cell 1 first (it defines chunks, encoder, doc_vecs).
+# Set your key in the 🔑 panel (name it OPENAI_API_KEY) or paste it.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
 from openai import OpenAI
 
 llm = OpenAI()
@@ -180,8 +279,14 @@ def decompose(query: str) -> list[str]:
     )
     return json.loads(resp.output_text)["questions"]
 
-# usage: search with the hypothetical answer, not the raw question
-probe_vec = encoder.encode(hyde_probe("why do ingestion jobs stall on large PDFs?"))`,
+print(decompose("How does our EU retention policy differ from the US one?"))
+
+# search with the hypothetical answer, not the raw question
+probe = hyde_probe("why do ingestion jobs stall on large PDFs?")
+print("HyDE probe:", probe[:80] + "...")
+q_vec = encoder.encode(probe, normalize_embeddings=True)      # encoder from cell 1
+top = [int(i) for i in np.argsort(doc_vecs @ q_vec)[::-1][:3]]
+print("HyDE retrieves:", [chunks[i]["heading"] for i in top])`,
           explanation:
             "HyDE is the same plain completion, read off `resp.output_text`. For decomposition, OpenAI's native structured outputs (`text.format` with `strict: True` — note the required `additionalProperties: False`) replace Anthropic's forced-tool-call trick: the schema is enforced server-side and you `json.loads` the text, instead of fishing a `tool_use` block out of the response.",
         },

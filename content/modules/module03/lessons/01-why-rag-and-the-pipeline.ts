@@ -65,7 +65,11 @@ export const lesson01: Lesson = {
       type: "code",
       language: "python",
       title: "embeddings and cosine similarity in ten lines",
-      code: `from sentence_transformers import SentenceTransformer
+      code: `# Colab cell 1 — run once (downloads a small local embedding model;
+# no API key needed).
+!pip install -q sentence-transformers
+
+from sentence_transformers import SentenceTransformer
 import numpy as np
 
 model = SentenceTransformer("all-MiniLM-L6-v2")   # small, fast, local, 384-dim
@@ -96,8 +100,19 @@ for score, doc in sorted(zip(scores, docs), reverse=True):
       type: "code",
       language: "python",
       title: "the smallest honest RAG system",
-      code: `import anthropic
-import numpy as np
+      code: `# Colab cell 2 — run cell 1 first (it defines model, docs, doc_vecs).
+# Set your key in the 🔑 panel (name it ANTHROPIC_API_KEY) or paste it.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
 
 llm = anthropic.Anthropic()
 
@@ -128,8 +143,19 @@ print(answer("How do I recover my account?"))`,
       variants: [
         {
           provider: "openai",
-          code: `from openai import OpenAI
-import numpy as np
+          code: `# Colab cell 2 — run cell 1 first (it defines model, docs, doc_vecs).
+# Set your key in the 🔑 panel (name it OPENAI_API_KEY) or paste it.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+from openai import OpenAI
 
 llm = OpenAI()
 
