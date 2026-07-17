@@ -34,7 +34,10 @@ export const lesson03: Lesson = {
       type: "code",
       language: "python",
       title: "producing the PR behind an HITL gate (PyGithub)",
-      code: `from github import Github        # PyGithub
+      code: `# Reference implementation — needs 'pip install PyGithub', a GITHUB_TOKEN,
+# a real repo/branch, and the audit() logger from Module 7. It opens a real
+# draft PR, so it's here to read and adapt, not to run in Colab.
+from github import Github        # PyGithub
 import os
 
 def open_pr_if_approved(repo_full: str, branch: str, base: str,
@@ -84,7 +87,19 @@ def open_pr_if_approved(repo_full: str, branch: str, base: str,
       language: "python",
       title: "an independent review pass before the human ever sees the diff",
       provider: "claude",
-      code: `import json
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or just paste it when prompted.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import json
 
 import anthropic
 
@@ -119,13 +134,33 @@ def independent_review(diff: str, issue_text: str) -> dict:
         output_config={"format": {"type": "json_schema", "schema": REVIEW_SCHEMA}},
     )
     text = next(b.text for b in resp.content if b.type == "text")
-    return json.loads(text)`,
+    return json.loads(text)
+
+
+# a diff that weakens a test instead of fixing code -> should be flagged:
+gamed_diff = (
+    "--- a/tests/test_pricing.py\\n+++ b/tests/test_pricing.py\\n"
+    "@@\\n-    assert result <= 100\\n+    assert result <= 200\\n")
+print(independent_review(gamed_diff,
+                         "calculate_discount returns discounts over 100%"))`,
       explanation:
         "The rubric is deliberately narrow and mechanical (touches_tests, scope_concern, verdict) rather than an open 'is this good?' — narrow, structured checks resist the position and self-preference biases Module 7 covers better than holistic judgments do. Because a gate routes on this verdict, the JSON shape is *enforced* via structured outputs rather than requested in the prompt. `touches_tests` is exactly the guardrail Lesson 2 promised against test-gaming: any repair that edits a test file gets flagged for elevated scrutiny automatically, before the human's limited attention is spent on it. This call is cheap triage, not certification — it exists so the HITL gate only ever sees diffs that already cleared automated review, not to replace the human's judgment. One deliberate difference from Module 7's judge, which forced a **tool call** for the same enforce-the-shape job: both are Module 1's structured-output patterns, and since nothing here needs executing, the native `output_config` format is the lighter fit — pick either, just pick consciously.",
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or just paste it when prompted.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
 from openai import OpenAI
 
 reviewer_client = OpenAI()   # if the fixer is a Claude model, this IS the
@@ -159,7 +194,15 @@ def independent_review(diff: str, issue_text: str) -> dict:
         text={"format": {"type": "json_schema", "name": "review",
                          "schema": REVIEW_SCHEMA, "strict": True}},
     )
-    return json.loads(resp.output_text)`,
+    return json.loads(resp.output_text)
+
+
+# a diff that weakens a test instead of fixing code -> should be flagged:
+gamed_diff = (
+    "--- a/tests/test_pricing.py\\n+++ b/tests/test_pricing.py\\n"
+    "@@\\n-    assert result <= 100\\n+    assert result <= 200\\n")
+print(independent_review(gamed_diff,
+                         "calculate_discount returns discounts over 100%"))`,
           explanation:
             'Same narrow rubric, same enforced JSON — the Responses API takes the schema via `text={"format": {"type": "json_schema", ..., "strict": True}}` where the Messages API uses `output_config={"format": {"type": "json_schema", ...}}`, and the result reads directly off `resp.output_text`. The cross-family pairing is the practical payoff of having both providers wired: a `claude-sonnet-5` fixer reviewed by `gpt-5.5` (or the reverse) de-biases by construction, per the self-preference material this lesson\'s drills cover.',
         },
@@ -222,7 +265,8 @@ def independent_review(diff: str, issue_text: str) -> dict:
       type: "code",
       language: "python",
       title: "scoring the eval set with a partial-success taxonomy",
-      code: `from dataclasses import dataclass, field
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+from dataclasses import dataclass, field
 
 @dataclass
 class IssueResult:
@@ -256,9 +300,29 @@ def report(results: list[IssueResult]) -> dict:
         "taxonomy": by_outcome,
         "median_cost_usd": round(median(r.cost_usd for r in results), 3),
         "median_seconds": round(median(r.seconds for r in results), 1),
-    }`,
+    }
+
+
+# fake runs, one per taxonomy category, to see the report populate:
+from types import SimpleNamespace as NS
+def make_run(status, wrote_test, existing_failed, repro_passed):
+    return NS(status=status, wrote_reproducing_test=wrote_test,
+              tests_before=NS(),
+              tests_after=NS(existing_failed=existing_failed,
+                             repro_test_passed=repro_passed))
+
+runs = [
+    make_run("done", True, False, True),         # full_success
+    make_run("done", False, False, True),        # fix_without_test
+    make_run("done", True, True, True),          # regression_introduced
+    make_run("done", True, False, False),        # wrong_location
+    make_run("exhausted", False, False, False),  # exhausted_retries
+]
+results = [IssueResult(f"issue-{i}", score_issue(r), cost_usd=0.05 * (i + 1),
+                       seconds=10 * (i + 1)) for i, r in enumerate(runs)]
+print(report(results))`,
       explanation:
-        "The scoring function encodes the taxonomy as a decision tree over ground truth you control: did it run out of retries, skip the reproducing test, break existing tests, or fail to fix the target? Reporting the outcome histogram alongside the headline success rate is what a senior reviewer wants — it shows you know *how* your agent fails, not just how often. Median cost and time per issue are the operational numbers every hiring conversation asks for.",
+        "The scoring function encodes the taxonomy as a decision tree over ground truth you control: did it run out of retries, skip the reproducing test, break existing tests, or fail to fix the target? Reporting the outcome histogram alongside the headline success rate is what a senior reviewer wants — it shows you know *how* your agent fails, not just how often. Median cost and time per issue are the operational numbers every hiring conversation asks for. The demo builds one run per category and prints the full report — success rate, the outcome histogram, and the medians — so you can see exactly the shape a reviewer wants.",
     },
     {
       type: "callout",

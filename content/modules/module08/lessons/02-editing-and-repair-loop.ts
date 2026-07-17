@@ -49,9 +49,15 @@ export const lesson02: Lesson = {
       type: "code",
       language: "python",
       title: "a safe search/replace edit tool",
-      code: `import pathlib, shutil
+      code: `# Colab cell — pure Python, no key needed. Builds a tiny sandbox repo so
+# the edit tool runs against a real file.
+import pathlib, shutil
 
-REPO = pathlib.Path("/sandbox/repo")
+REPO = pathlib.Path("sandbox/repo").resolve()   # absolute so containment checks work
+REPO.mkdir(parents=True, exist_ok=True)
+(REPO / "pricing.py").write_text(
+    "def calculate_discount(price, pct):\\n"
+    "    return price * (pct / 100)\\n")
 
 def apply_edit(rel: str, old: str, new: str) -> str:
     \"\"\"Replace an exact block. Returns a clear error string on any mismatch.\"\"\"
@@ -74,9 +80,17 @@ def apply_edit(rel: str, old: str, new: str) -> str:
     backup = target.with_suffix(target.suffix + ".bak")
     shutil.copy(target, backup)              # cheap rollback point
     target.write_text(text.replace(old, new, 1))
-    return f"applied: 1 replacement in {rel}"`,
+    return f"applied: 1 replacement in {rel}"
+
+
+# a valid edit, then the two recoverable failure branches:
+print(apply_edit("pricing.py",
+                 "    return price * (pct / 100)\\n",
+                 "    return min(price, price * (pct / 100))\\n"))
+print(apply_edit("pricing.py", "return refund(order)\\n", "x"))   # not found
+print(apply_edit("pricing.py", "\\n", "x"))                       # many matches`,
       explanation:
-        "The design turns every failure into a recoverable, informative message: block not found tells the model to re-read (it's working from stale text); multiple matches tells it to add context for uniqueness. The `.bak` copy is a trivial rollback point if the test loop later decides to revert. Crucially the tool refuses ambiguous edits rather than guessing — an agent silently editing the wrong of three identical blocks is a nasty, hard-to-trace bug.",
+        "The design turns every failure into a recoverable, informative message: block not found tells the model to re-read (it's working from stale text); multiple matches tells it to add context for uniqueness. The `.bak` copy is a trivial rollback point if the test loop later decides to revert. Crucially the tool refuses ambiguous edits rather than guessing — an agent silently editing the wrong of three identical blocks is a nasty, hard-to-trace bug. The demo shows all three outcomes in order: a clean `applied`, a `block not found`, and an `appears N times` refusal.",
     },
     {
       type: "heading",
@@ -90,7 +104,8 @@ def apply_edit(rel: str, old: str, new: str) -> str:
       type: "code",
       language: "python",
       title: "adding a staleness guard to apply_edit",
-      code: `import hashlib
+      code: `# Colab cell — run the previous cell first (it defines REPO). Pure Python.
+import hashlib
 
 LAST_READ_HASH: dict[str, str] = {}   # populated by read_file on each read
 
@@ -119,9 +134,25 @@ def apply_edit_guarded(rel: str, old: str, new: str) -> str:
 
     target.write_text(text.replace(old, new, 1))
     LAST_READ_HASH.pop(rel, None)   # invalidate — the next read repopulates it
-    return f"applied: 1 replacement in {rel}"`,
+    return f"applied: 1 replacement in {rel}"
+
+
+# reset the file to a known state (the earlier cell's demo mutated it):
+(REPO / "pricing.py").write_text(
+    "def calculate_discount(price, pct):\\n    return price * (pct / 100)\\n")
+
+# A) recorded hash doesn't match what's on disk -> rejected, sent to re-read:
+LAST_READ_HASH["pricing.py"] = "stale-hash-that-wont-match"
+print("A:", apply_edit_guarded("pricing.py",
+      "    return price * (pct / 100)\\n", "    return 0\\n"))
+
+# B) recorded hash matches current content -> applies cleanly:
+LAST_READ_HASH["pricing.py"] = file_hash((REPO / "pricing.py").read_text())
+print("B:", apply_edit_guarded("pricing.py",
+      "    return price * (pct / 100)\\n",
+      "    return min(price, price * (pct / 100))\\n"))`,
       explanation:
-        "The guard is deliberately blunt: any drift at all — not just drift touching the edited block — rejects the write and sends the model back to `read_file`. This matters because the model's broader understanding of the file (what else is nearby, what the function above does) could be stale even when the specific old-block text still happens to match. Popping the cached hash after a successful write forces a fresh read before the *next* edit to the same file, so a chain of edits can never compound on assumptions from the original read.",
+        "The guard is deliberately blunt: any drift at all — not just drift touching the edited block — rejects the write and sends the model back to `read_file`. This matters because the model's broader understanding of the file (what else is nearby, what the function above does) could be stale even when the specific old-block text still happens to match. Popping the cached hash after a successful write forces a fresh read before the *next* edit to the same file, so a chain of edits can never compound on assumptions from the original read. The demo shows both paths: (A) a stale recorded hash rejects the write and points the model back to `read_file`, while (B) a matching hash lets the same edit apply.",
     },
     {
       type: "exercise",
@@ -156,13 +187,21 @@ def apply_edit_guarded(rel: str, old: str, new: str) -> str:
       type: "code",
       language: "python",
       title: "running the test suite and capturing structured failures",
-      code: `import subprocess, pathlib
+      code: `# Colab cell — run the first cell first (defines REPO). Installs pytest and
+# drops a passing test into the sandbox so the runner has something to run.
+!pip install -q pytest
 
-REPO = pathlib.Path("/sandbox/repo")
+import subprocess, sys, pathlib
+
+REPO = pathlib.Path("sandbox/repo").resolve()
+(REPO / "test_pricing.py").write_text(
+    "from pricing import calculate_discount\\n"
+    "def test_discount():\\n"
+    "    assert calculate_discount(100, 10) == 10\\n")
 
 def run_tests(target: str = "") -> dict:
     \"\"\"Run pytest in the sandbox; return pass/fail + trimmed output.\"\"\"
-    cmd = ["python", "-m", "pytest", "-q", "--no-header"]
+    cmd = [sys.executable, "-m", "pytest", "-q", "--no-header"]   # this interpreter
     if target:
         cmd.append(target)
     proc = subprocess.run(
@@ -175,7 +214,11 @@ def run_tests(target: str = "") -> dict:
         "passed": proc.returncode == 0,
         "returncode": proc.returncode,
         "output_tail": tail,
-    }`,
+    }
+
+result = run_tests()
+print("passed:", result["passed"])
+print(result["output_tail"])`,
       explanation:
         "Two production details: a `timeout` so a hanging test suite can't wedge the agent, and trimming output to the last ~60 lines because pytest tracebacks can be enormous and the failure summary lives at the bottom. Returning a dict (not a raw string) lets the loop branch cleanly on `passed` while still feeding the model the `output_tail` to reason about.",
     },
@@ -184,7 +227,21 @@ def run_tests(target: str = "") -> dict:
       language: "python",
       title: "the bounded repair loop: red → green",
       provider: "claude",
-      code: `import anthropic
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or paste it. This is the assembled repair loop: it needs
+# read_file/apply_edit/run_tests wired into REPAIR_TOOLS (schemas) and a
+# run_repair_tool dispatcher, plus a sandboxed repo — read and adapt.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import anthropic
 
 client = anthropic.Anthropic()
 MAX_ATTEMPTS = 5
@@ -232,7 +289,21 @@ def repair(plan: dict, issue_text: str) -> dict:
       variants: [
         {
           provider: "openai",
-          code: `import json
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or paste it. This is the assembled repair loop: it needs
+# read_file/apply_edit/run_tests wired into REPAIR_TOOLS (schemas) and a
+# run_repair_tool dispatcher, plus a sandboxed repo — read and adapt.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json
 from openai import OpenAI
 
 client = OpenAI()

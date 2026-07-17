@@ -98,9 +98,17 @@ export const lesson01: Lesson = {
       type: "code",
       language: "python",
       title: "exploration tools — the agent's eyes on the repo",
-      code: `import subprocess, pathlib
+      code: `# Colab cell — pure Python, no key needed. Builds a tiny sandbox repo on
+# disk so the three tools actually run against real files.
+import subprocess, pathlib
 
-REPO = pathlib.Path("/sandbox/repo")
+REPO = pathlib.Path("sandbox/repo").resolve()   # absolute so containment checks work
+REPO.mkdir(parents=True, exist_ok=True)
+(REPO / "pricing.py").write_text(
+    "def calculate_discount(price, pct):\\n"
+    "    return price * (pct / 100)\\n")
+(REPO / "utils.py").write_text(
+    "def clamp(x, lo, hi):\\n    return max(lo, min(x, hi))\\n")
 
 def search_symbol(pattern: str, max_results: int = 40) -> str:
     \"\"\"Grep the repo for a symbol or error string. Ripgrep if available.\"\"\"
@@ -134,9 +142,15 @@ def read_file(rel: str, start: int = 1, end: int = 400) -> str:
     text = target.read_text(errors="replace").splitlines()
     window = text[start - 1:end]
     # Line numbers help the model reference and later edit precisely.
-    return "\\n".join(f"{i + start:>5}  {ln}" for i, ln in enumerate(window))`,
+    return "\\n".join(f"{i + start:>5}  {ln}" for i, ln in enumerate(window))
+
+
+# drive the agent's three "eyes" against the sandbox repo:
+print("search_symbol('calculate_discount'):\\n" + search_symbol("calculate_discount"))
+print("\\nlist_dir('.'):\\n" + list_dir("."))
+print("\\nread_file('pricing.py'):\\n" + read_file("pricing.py"))`,
       explanation:
-        "These three tools — search, list, read — are enough for an agent to navigate a repo like an engineer: grep an error string, list the module it points to, read the function, follow the call site. Two safety essentials: every path is resolved and constrained to the repo (no filesystem escape), and reads are windowed so a huge file can't blow the context budget. Return errors as strings so the model can recover, per the Module 1 convention.",
+        "These three tools — search, list, read — are enough for an agent to navigate a repo like an engineer: grep an error string, list the module it points to, read the function, follow the call site. The demo runs each against the sandbox repo so you see exactly what the model would receive — a grep hit with a line number, a directory listing, a line-numbered file window. Two safety essentials: every path is resolved and constrained to the repo (no filesystem escape), and reads are windowed so a huge file can't blow the context budget. Return errors as strings so the model can recover, per the Module 1 convention.",
     },
     {
       type: "exercise",
@@ -157,11 +171,25 @@ def read_file(rel: str, start: int = 1, end: int = 400) -> str:
       language: "python",
       title: "the exploration loop producing a checkpointed plan",
       provider: "claude",
-      code: `import json, pathlib
+      code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# ANTHROPIC_API_KEY) or paste it. This is the assembled agent loop: it needs
+# the tools from the previous cell wired into EXPLORE_TOOLS (schemas) and a
+# run_explore_tool dispatcher, plus a real repo — it's here to read and adapt.
+!pip install -q anthropic
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["ANTHROPIC_API_KEY"] = userdata.get("ANTHROPIC_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("ANTHROPIC_API_KEY", getpass("Anthropic API key: "))
+
+import json, pathlib
 import anthropic
 
 client = anthropic.Anthropic()
-PLAN_PATH = pathlib.Path("/sandbox/plan.json")
+PLAN_PATH = pathlib.Path("sandbox/plan.json")
 
 def explore_and_plan(issue_text: str) -> dict:
     system = (
@@ -200,11 +228,25 @@ def explore_and_plan(issue_text: str) -> dict:
       variants: [
         {
           provider: "openai",
-          code: `import json, pathlib
+          code: `# Colab cell — run once. Set your key in the 🔑 panel (name it
+# OPENAI_API_KEY) or paste it. This is the assembled agent loop: it needs
+# the tools from the previous cell wired into EXPLORE_TOOLS (schemas) and a
+# run_explore_tool dispatcher, plus a real repo — it's here to read and adapt.
+!pip install -q openai
+
+import os
+try:
+    from google.colab import userdata
+    os.environ["OPENAI_API_KEY"] = userdata.get("OPENAI_API_KEY")
+except Exception:
+    from getpass import getpass
+    os.environ.setdefault("OPENAI_API_KEY", getpass("OpenAI API key: "))
+
+import json, pathlib
 from openai import OpenAI
 
 client = OpenAI()
-PLAN_PATH = pathlib.Path("/sandbox/plan.json")
+PLAN_PATH = pathlib.Path("sandbox/plan.json")
 
 def explore_and_plan(issue_text: str) -> dict:
     instructions = (

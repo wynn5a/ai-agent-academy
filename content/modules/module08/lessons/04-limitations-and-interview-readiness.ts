@@ -146,7 +146,8 @@ export const lesson04: Lesson = {
       type: "code",
       language: "python",
       title: "a STAR story bank as structured, rehearsable data",
-      code: `# Not app code — a scaffold to force numbers and a named failure class
+      code: `# Colab cell — pure Python, no key needed; run it as-is.
+# Not app code — a scaffold to force numbers and a named failure class
 # into every story before Gate G4. Rehearse until each is <2 minutes.
 STORY_BANK = [
     {
@@ -178,9 +179,12 @@ def gaps(bank):
         if not s.get("numbers"):
             print(f"story '{s['theme']}' has no numbers — fix before G4")
         if not s.get("failure_class"):
-            print(f"story '{s['theme']}' names no failure class — fix before G4")`,
+            print(f"story '{s['theme']}' names no failure class — fix before G4")
+
+gaps(STORY_BANK)
+print(f"{len(STORY_BANK)}/5 stories drafted — three themes still TODO")`,
       explanation:
-        "The scaffold enforces the two things that separate senior behavioral answers from junior ones: a concrete number in the result, and a named failure-mode class showing you have the vocabulary. The `gaps` check is a literal pre-interview lint — run it over your bank and fill every hole before Gate G4. Rehearse each story to under two minutes so you can deliver it crisply under pressure.",
+        "The scaffold enforces the two things that separate senior behavioral answers from junior ones: a concrete number in the result, and a named failure-mode class showing you have the vocabulary. The `gaps` check is a literal pre-interview lint — run it over your bank and fill every hole before Gate G4; the two seeded stories already carry numbers and a failure class, so the demo run stays quiet on them and only the missing three themes remain. Rehearse each story to under two minutes so you can deliver it crisply under pressure.",
     },
     {
       type: "heading",
