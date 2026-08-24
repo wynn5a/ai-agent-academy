@@ -16,3 +16,6 @@ next-env.d.ts
 
 # local skill eval run output (artifacts regenerate on each run)
 .claude/skills/*-workspace/
+
+# local standalone demos (scratch prototypes, not course content)
+min-heap-demo.html
