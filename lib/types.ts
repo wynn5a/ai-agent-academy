@@ -69,6 +69,7 @@ export type AnimationName =
   | "temperature"
   | "schema-masking"
   | "context-window"
+  | "context-folding"
   | "tool-calling"
   | "rag-pipeline"
   | "embedding-space"

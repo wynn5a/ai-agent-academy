@@ -1,7 +1,14 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Stage, Node, FlowEdge, StepReveal, loopMotion } from "./primitives";
+import {
+  Stage,
+  Node,
+  FlowEdge,
+  StepReveal,
+  StepFade,
+  loopMotion,
+} from "./primitives";
 import { useAnimPlayback } from "./controller";
 
 /* ---------- RAG pipeline: ingest + query paths ---------- */
@@ -447,6 +454,297 @@ export function MemoryTypesAnim() {
           { cx: 320, cy: 165 },
         )}
       />
+    </Stage>
+  );
+}
+
+/* ---------- Context folding: evict with a stub, reload at the tail ---------- */
+const FOLD_RESULTS = 6; // tool results in the scripted window
+const FOLD_STUBS = 4; // the oldest ones are evicted at step 1
+const FOLD_W = 58; // width of one tool-result block
+const FOLD_STUB_W = 24; // width of its stub once evicted
+
+export function ContextFoldingAnim() {
+  const { step } = useAnimPlayback();
+  const folded = step >= 1;
+  const bx = (i: number) => 232 + i * FOLD_W; // left edge of block i, unfolded
+  const reclaimed = (FOLD_W - FOLD_STUB_W) * FOLD_STUBS; // room the fold frees
+  const tail = bx(FOLD_RESULTS) - reclaimed; // first free slot after folding
+  const captions = [
+    "tool results fill the window; the model has already extracted what it needs",
+    "fold: r1–r4 move out verbatim, leaving stubs. the cache breaks once, here",
+    "the reclaimed space absorbs the next turn; older messages are untouched",
+    'reload("r2") appends at the tail: exact bytes back, cached prefix intact',
+  ];
+  return (
+    <Stage viewBox="0 0 640 250">
+      <text
+        x={55}
+        y={24}
+        fill="#94a3b8"
+        fontSize={12}
+        fontFamily="monospace"
+      >
+        context window (finite budget)
+      </text>
+      {/* the fold edits history at r1: everything after it re-caches, once */}
+      <StepFade opacity={folded ? 1 : 0}>
+        <line
+          x1={bx(0)}
+          y1={34}
+          x2={bx(0)}
+          y2={92}
+          stroke="#f87171"
+          strokeDasharray="4 4"
+          strokeWidth={1.5}
+        />
+        <text
+          x={585}
+          y={24}
+          textAnchor="end"
+          fill="#f87171"
+          fontSize={11}
+          fontFamily="monospace"
+        >
+          ⚠ cache invalid from here (once)
+        </text>
+      </StepFade>
+      <rect
+        x={55}
+        y={44}
+        width={530}
+        height={44}
+        rx={8}
+        fill="none"
+        stroke="#232f47"
+        strokeWidth={1.5}
+      />
+      {/* fixed allocations */}
+      <rect
+        x={58}
+        y={47}
+        width={62}
+        height={38}
+        rx={5}
+        fill="#a78bfa59"
+        stroke="#a78bfa99"
+      />
+      <text
+        x={89}
+        y={70}
+        textAnchor="middle"
+        fill="#e2e8f0"
+        fontSize={9.5}
+        fontFamily="monospace"
+      >
+        system
+      </text>
+      <rect
+        x={124}
+        y={47}
+        width={104}
+        height={38}
+        rx={5}
+        fill="#38bdf859"
+        stroke="#38bdf899"
+      />
+      <text
+        x={176}
+        y={70}
+        textAnchor="middle"
+        fill="#e2e8f0"
+        fontSize={9.5}
+        fontFamily="monospace"
+      >
+        turns
+      </text>
+      {/* tool results: the oldest shrink to stubs and pack together, the
+          rest slide left. A stub's box and its label move by different
+          amounts (the box narrows from the right), so each gets its own g. */}
+      {Array.from({ length: FOLD_RESULTS }, (_, i) => {
+        const evicts = i < FOLD_STUBS;
+        const slide = folded
+          ? evicts
+            ? -(FOLD_W - FOLD_STUB_W) * i
+            : -reclaimed
+          : 0;
+        const ease = { duration: 0.45, ease: "easeOut" } as const;
+        return (
+          <g key={i}>
+            <motion.g initial={false} animate={{ x: slide }} transition={ease}>
+              <motion.rect
+                x={bx(i)}
+                y={47}
+                height={38}
+                rx={5}
+                fill="#fbbf24"
+                fillOpacity={0.3}
+                stroke="#fbbf24"
+                strokeOpacity={0.6}
+                strokeDasharray={folded && evicts ? "3 3" : undefined}
+                initial={false}
+                animate={{
+                  width: folded && evicts ? FOLD_STUB_W - 4 : FOLD_W - 4,
+                }}
+                transition={ease}
+              />
+            </motion.g>
+            <motion.g
+              initial={false}
+              animate={{
+                x:
+                  slide +
+                  (folded && evicts ? -(FOLD_W - FOLD_STUB_W) / 2 : 0),
+                opacity: folded && evicts ? 0.8 : 1,
+              }}
+              transition={ease}
+            >
+              <text
+                x={bx(i) + (FOLD_W - 4) / 2}
+                y={70}
+                textAnchor="middle"
+                fill="#e2e8f0"
+                fontSize={9.5}
+                fontFamily="monospace"
+              >
+                {`r${i + 1}`}
+              </text>
+            </motion.g>
+          </g>
+        );
+      })}
+      <StepReveal index={1} dim={1}>
+        <FlowEdge
+          d={`M ${bx(0) + (FOLD_STUB_W * FOLD_STUBS) / 2} 92 V 170 H 368`}
+          color="#fbbf24"
+        />
+        <path d="M 368 165 L 376 170 L 368 175 Z" fill="#fbbf24" />
+        <rect
+          x={376}
+          y={150}
+          width={207}
+          height={40}
+          rx={8}
+          fill="none"
+          stroke="#fbbf24"
+          strokeOpacity={0.5}
+          strokeWidth={1.5}
+          strokeDasharray="5 4"
+        />
+        <text
+          x={479}
+          y={166}
+          textAnchor="middle"
+          fill="#e2e8f0"
+          fontSize={10.5}
+          fontFamily="monospace"
+        >
+          cold store (outside the window)
+        </text>
+        <text
+          x={479}
+          y={181}
+          textAnchor="middle"
+          fill="#94a3b8"
+          fontSize={10}
+          fontFamily="monospace"
+        >
+          r1 r2 r3 r4 — verbatim
+        </text>
+      </StepReveal>
+      {/* free space label: only while the space is still empty */}
+      <StepFade opacity={step === 1 ? 1 : 0}>
+        <text
+          x={tail + 68}
+          y={70}
+          textAnchor="middle"
+          fill="#475569"
+          fontSize={10}
+          fontFamily="monospace"
+        >
+          ← reclaimed
+        </text>
+      </StepFade>
+      <StepReveal index={2} dim={1}>
+        <rect
+          x={tail + 4}
+          y={47}
+          width={86}
+          height={38}
+          rx={5}
+          fill="#f8717159"
+          stroke="#f8717199"
+        />
+        <text
+          x={tail + 47}
+          y={70}
+          textAnchor="middle"
+          fill="#e2e8f0"
+          fontSize={9.5}
+          fontFamily="monospace"
+        >
+          new turn
+        </text>
+      </StepReveal>
+      <StepReveal index={3}>
+        <FlowEdge d={`M ${tail + 135} 150 V 98`} color="#34d399" />
+        <path
+          d={`M ${tail + 130} 100 L ${tail + 135} 92 L ${tail + 140} 100 Z`}
+          fill="#34d399"
+        />
+        <rect
+          x={tail + 94}
+          y={47}
+          width={42}
+          height={38}
+          rx={5}
+          fill="#34d39959"
+          stroke="#34d39999"
+        />
+        <text
+          x={tail + 115}
+          y={70}
+          textAnchor="middle"
+          fill="#e2e8f0"
+          fontSize={9.5}
+          fontFamily="monospace"
+        >
+          r2
+        </text>
+        {/* everything before the reload is still a cached prefix */}
+        <line
+          x1={58}
+          y1={100}
+          x2={tail + 90}
+          y2={100}
+          stroke="#34d399"
+          strokeWidth={1.5}
+        />
+        <text
+          x={(58 + tail + 90) / 2}
+          y={114}
+          textAnchor="middle"
+          fill="#34d399"
+          fontSize={10.5}
+          fontFamily="monospace"
+        >
+          cached prefix — untouched by the reload
+        </text>
+      </StepReveal>
+      {captions.map((c, i) => (
+        <StepFade key={i} opacity={step === i ? 1 : 0}>
+          <text
+            x={320}
+            y={236}
+            textAnchor="middle"
+            fill="#94a3b8"
+            fontSize={10.5}
+            fontFamily="monospace"
+          >
+            {c}
+          </text>
+        </StepFade>
+      ))}
     </Stage>
   );
 }

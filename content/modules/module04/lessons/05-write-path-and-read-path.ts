@@ -1,6 +1,6 @@
 import type { Lesson } from "@/lib/types";
 
-export const lesson04: Lesson = {
+export const lesson05: Lesson = {
   slug: "write-path-and-read-path",
   title: "The Write Path & the Read Path",
   minutes: 40,
@@ -19,8 +19,8 @@ export const lesson04: Lesson = {
       type: "list",
       ordered: true,
       items: [
-        "**Extract** candidate facts from the session (Lesson 3's forced structured call).",
-        '**Screen provenance**: facts stated directly by the user pass; "facts" originating in content the agent merely *read* (files, web pages, tool output) are quarantined for review — this is the injection gate, detailed in Lesson 5.',
+        "**Extract** candidate facts from the session (Lesson 4's forced structured call).",
+        '**Screen provenance**: facts stated directly by the user pass; "facts" originating in content the agent merely *read* (files, web pages, tool output) are quarantined for review — this is the injection gate, detailed in Lesson 6.',
         "**Deduplicate**: embedding similarity against existing memories. Near-identical → skip (optionally refresh the timestamp).",
         "**Contradiction check**: same *topic*, incompatible *content* — similar-but-not-identical embeddings plus an LLM judgment. On contradiction: keep both, timestamped, mark the old one superseded, prefer the newer at recall, and flag the conflict.",
         "**Store** with provenance, timestamp, importance.",
@@ -50,7 +50,7 @@ from sentence_transformers import SentenceTransformer
 client = anthropic.Anthropic()
 encoder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Lesson 3's MemoryStore, unchanged, so this notebook stands alone.
+# Lesson 4's MemoryStore, unchanged, so this notebook stands alone.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
     id            INTEGER PRIMARY KEY,
@@ -157,7 +157,7 @@ from sentence_transformers import SentenceTransformer
 client = OpenAI()
 encoder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Lesson 3's MemoryStore, unchanged, so this notebook stands alone.
+# Lesson 4's MemoryStore, unchanged, so this notebook stands alone.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
     id            INTEGER PRIMARY KEY,
@@ -271,13 +271,13 @@ for fact in ["User deploys to production on Fridays.",
     {
       type: "callout",
       kind: "career",
-      text: "An agent with **persistent long-term memory — including conflict resolution between contradicting facts** — is a specifically-cited high-value portfolio project in 2026 hiring guides (the other half, defense against memory-injection attacks, is Lesson 5). The part reviewers actually inspect is this lesson's write-path gauntlet: a resolution-options table like the one above, a `superseded_by` chain they can query, and a demo where a fact changes and the agent visibly prefers the newer version. Hiring managers look at GitHub before the résumé, and 2–3 deep, evaluated projects beat a pile of shallow demos — Lab 04 packages exactly this.",
+      text: "An agent with **persistent long-term memory — including conflict resolution between contradicting facts** — is a specifically-cited high-value portfolio project in 2026 hiring guides (the other half, defense against memory-injection attacks, is Lesson 6). The part reviewers actually inspect is this lesson's write-path gauntlet: a resolution-options table like the one above, a `superseded_by` chain they can query, and a demo where a fact changes and the agent visibly prefers the newer version. Hiring managers look at GitHub before the résumé, and 2–3 deep, evaluated projects beat a pile of shallow demos — Lab 04 packages exactly this.",
     },
     {
       type: "callout",
       kind: "warning",
       title: "Delete is the lifecycle's third verb",
-      text: "Everything above versions rather than deletes — by design, superseding preserves the evidence a wrong resolution needs. But \"never truly delete\" collides with a real requirement: GDPR-style right-to-erasure means a user (or a legal request) can demand a fact be actually gone, not superseded-and-retained. Treat these as two different operations with two different triggers: **supersede** is a business-logic event (a fact changed) and stays the default; **hard delete** is a compliance event (this specific data must not exist anymore) and must cascade — the row, its embedding, any log line that echoed the fact verbatim, and any backup that hasn't rolled off retention. A memory system that can version but can't truly erase isn't finished; Lesson 5 picks this up as a security and retention concern, not just a data-modeling one.",
+      text: "Everything above versions rather than deletes — by design, superseding preserves the evidence a wrong resolution needs. But \"never truly delete\" collides with a real requirement: GDPR-style right-to-erasure means a user (or a legal request) can demand a fact be actually gone, not superseded-and-retained. Treat these as two different operations with two different triggers: **supersede** is a business-logic event (a fact changed) and stays the default; **hard delete** is a compliance event (this specific data must not exist anymore) and must cascade — the row, its embedding, any log line that echoed the fact verbatim, and any backup that hasn't rolled off retention. A memory system that can version but can't truly erase isn't finished; Lesson 6 picks this up as a security and retention concern, not just a data-modeling one.",
     },
     {
       type: "exercise",
@@ -406,7 +406,7 @@ print(memories)   # the Wednesday fact wins; the superseded Friday fact never ap
       prompt:
         '**Drill:** "Your memory store just grew from 200 facts per user to 200,000 total across all users. What changes about your read path?"',
       answer:
-        "Two things, and they're independent. First, if that 200,000 is spread across many users at roughly 200 each, the *per-session* read path barely changes — you're still scoring a couple hundred candidates for the user in front of you, which is cheap; what changes is that you now need real per-user isolation at the storage layer, not just at scoring time, because a shared index without a hard user_id filter turns 'irrelevant to this user' into 'a cross-tenant leak waiting for the wrong coincidence' — that's Lesson 5's territory, and it's the first thing I'd audit. Second, if the growth is genuinely per-user — a single account with tens of thousands of facts — brute-force cosine over the active set stops being 'microseconds' and injection-at-session-start stops being the obvious default: that's when I'd reach for retrieval-as-a-tool, or at minimum an ANN index (Module 3's vector-DB lesson) instead of a linear scan, and I'd expect the top-k and minimum-score floor to matter more, not less, since a bigger candidate pool means more near-miss noise clearing a loose threshold. **Follow-up probe:** \"how would you notice this had become a problem before a user complained?\" → log recall latency and candidate-pool size per call, and alert on the pool size crossing whatever threshold your brute-force scan stops being cheap at — that's a metric you can graph, not a judgment call you make once.",
+        "Two things, and they're independent. First, if that 200,000 is spread across many users at roughly 200 each, the *per-session* read path barely changes — you're still scoring a couple hundred candidates for the user in front of you, which is cheap; what changes is that you now need real per-user isolation at the storage layer, not just at scoring time, because a shared index without a hard user_id filter turns 'irrelevant to this user' into 'a cross-tenant leak waiting for the wrong coincidence' — that's Lesson 6's territory, and it's the first thing I'd audit. Second, if the growth is genuinely per-user — a single account with tens of thousands of facts — brute-force cosine over the active set stops being 'microseconds' and injection-at-session-start stops being the obvious default: that's when I'd reach for retrieval-as-a-tool, or at minimum an ANN index (Module 3's vector-DB lesson) instead of a linear scan, and I'd expect the top-k and minimum-score floor to matter more, not less, since a bigger candidate pool means more near-miss noise clearing a loose threshold. **Follow-up probe:** \"how would you notice this had become a problem before a user complained?\" → log recall latency and candidate-pool size per call, and alert on the pool size crossing whatever threshold your brute-force scan stops being cheap at — that's a metric you can graph, not a judgment call you make once.",
     },
     {
       type: "keypoints",

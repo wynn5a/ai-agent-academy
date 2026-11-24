@@ -33,7 +33,7 @@ export const lab04: Lab = {
       type: "code",
       language: "python",
       title: "skeleton (fill in the TODOs)",
-      code: `# memory/store.py — MemoryStore over SQLite (schema from Lesson 3)
+      code: `# memory/store.py — MemoryStore over SQLite (schema from Lesson 4)
 #   columns: fact, provenance JSON, created_at, importance,
 #            superseded_by, embedding
 
@@ -71,7 +71,7 @@ def run_session(task: str):
     commit_session(STORE, render_transcript(messages), new_session_id())
 
 # demo.py — three sessions, three fresh processes
-# tests/test_injection.py — your red-team suite (Lesson 5 harness)
+# tests/test_injection.py — your red-team suite (Lesson 6 harness)
 # tests/test_compaction.py — planted constraint survives compaction`,
       explanation:
         "Design decisions that matter: the demo's three sessions must be genuinely fresh processes (persistence you never exercised is persistence you never tested); every quarantine/rejection is logged with the reason, because Gate G2 asks you to *explain* why a payload was caught, not just show that it was; and the compaction test asserts behavior (constraint still honored), not summary wording.",
@@ -79,7 +79,7 @@ def run_session(task: str):
       variants: [
         {
           provider: "openai",
-          code: `# memory/store.py — MemoryStore over SQLite (schema from Lesson 3)
+          code: `# memory/store.py — MemoryStore over SQLite (schema from Lesson 4)
 #   columns: fact, provenance JSON, created_at, importance,
 #            superseded_by, embedding
 
@@ -118,7 +118,7 @@ def run_session(task: str):
     commit_session(STORE, render_transcript(messages), new_session_id())
 
 # demo.py — three sessions, three fresh processes
-# tests/test_injection.py — your red-team suite (Lesson 5 harness)
+# tests/test_injection.py — your red-team suite (Lesson 6 harness)
 # tests/test_compaction.py — planted constraint survives compaction`,
           explanation:
             "One deliberate design choice to notice: the Responses API offers server-side conversation state (`previous_response_id`) that would let you skip resending history — this lab keeps the message list client-side **on purpose**, because compaction, the write path, and the transcript you commit at session end all require owning that list. The stop condition becomes 'no `function_call` items in `resp.output`' instead of `stop_reason != \"tool_use\"`; everything memory-related is provider-neutral.",

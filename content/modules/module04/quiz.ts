@@ -38,7 +38,7 @@ export const quiz04: QuizQuestion[] = [
     ],
     correct: 0,
     explanation:
-      "The gauntlet order matters: provenance and instruction screens are the security gates (Lesson 5), dedupe prevents landfill growth, and the contradiction check (similarity in the same-topic zone plus an LLM judgment) triggers versioning rather than blind accumulation. A single unstructured 'store or not?' call gives you no audit trail and no layered defense.",
+      "The gauntlet order matters: provenance and instruction screens are the security gates (Lesson 6), dedupe prevents landfill growth, and the contradiction check (similarity in the same-topic zone plus an LLM judgment) triggers versioning rather than blind accumulation. A single unstructured 'store or not?' call gives you no audit trail and no layered defense.",
   },
   {
     question:

@@ -80,6 +80,15 @@ const REGISTRY: Record<AnimationName, Entry> = {
     h: 220,
     steps: 6,
   },
+  "context-folding": {
+    Component: dynamic(() =>
+      import("./KnowledgeAnims").then((m) => m.ContextFoldingAnim),
+    ),
+    w: 640,
+    h: 250,
+    steps: 4,
+    stepMs: 2800,
+  },
   "tool-calling": {
     Component: dynamic(() =>
       import("./FoundationAnims").then((m) => m.ToolCallingAnim),

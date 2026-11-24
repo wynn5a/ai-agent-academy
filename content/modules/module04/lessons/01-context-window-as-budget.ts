@@ -41,7 +41,7 @@ export const lesson01: Lesson = {
           "Recalled memories",
           "Small, capped",
           "First to shrink",
-          "Top-k only; recalled junk is context poisoning (Lesson 4)",
+          "Top-k only; recalled junk is context poisoning (Lesson 5)",
         ],
         [
           "Summary of older turns",
@@ -128,7 +128,7 @@ system, messages = assemble_window(
 print(f"window = {count(messages, system)} tokens")
 print(system)   # note the fenced, labeled memory block`,
       explanation:
-        "Three structural choices to notice: memories live in the *system* prompt (clearly fenced and labeled untrusted — the security half of this arrives in Lesson 5); the summary is injected as a user/assistant exchange so the model treats it as established conversation; and recent turns go in verbatim, last. Stable content first also preserves your prompt-cache prefix from Module 1.",
+        "Three structural choices to notice: memories live in the *system* prompt (clearly fenced and labeled untrusted — the security half of this arrives in Lesson 6); the summary is injected as a user/assistant exchange so the model treats it as established conversation; and recent turns go in verbatim, last. Stable content first also preserves your prompt-cache prefix from Module 1.",
       provider: "claude",
       variants: [
         {
@@ -316,7 +316,7 @@ print(digest_tool_result("read_file", fake_log)[:200])   # LLM-digest path`,
       prompt:
         '**Drill:** "Walk me through what you cut first when a call goes over budget, and defend the order."',
       answer:
-        "Order it by two axes: how cheaply it can be reconstructed, and how much damage losing it does. **First to shrink: recalled memories** — cut the weakest-scoring ones or drop the block entirely; they're supplementary by design (Lesson 4's minimum-score floor already treats 'inject nothing' as a valid outcome), and a dropped memory can be re-recalled next turn. **Second: tool results** — truncate or digest with a cheap LLM call, but always mark the seam ('truncated: output exceeded limit') so the model can ask for more instead of reasoning from an amputated fragment it thinks is complete. **Third: the summary of older turns** — re-summarize tighter rather than dropping it outright; it's already lossy, so shrinking it further is a matter of degree, not a step change. **Never: the system prompt or active task state** — losing the current goal or a standing constraint mid-task isn't graceful degradation, it's a correctness bug, and a cheap one to avoid since these are small and fixed. The one governing principle across all four: cutting should be *visible* — to the model via a seam, and to you via a log line — never silent. **Follow-up probe:** \"what if even the untouchables don't fit?\" → that's not a budget problem, it's a design bug — split the task, or the system prompt itself has grown past what a single call should carry.",
+        "Order it by two axes: how cheaply it can be reconstructed, and how much damage losing it does. **First to shrink: recalled memories** — cut the weakest-scoring ones or drop the block entirely; they're supplementary by design (Lesson 5's minimum-score floor already treats 'inject nothing' as a valid outcome), and a dropped memory can be re-recalled next turn. **Second: tool results** — truncate or digest with a cheap LLM call, but always mark the seam ('truncated: output exceeded limit') so the model can ask for more instead of reasoning from an amputated fragment it thinks is complete. **Third: the summary of older turns** — re-summarize tighter rather than dropping it outright; it's already lossy, so shrinking it further is a matter of degree, not a step change. **Never: the system prompt or active task state** — losing the current goal or a standing constraint mid-task isn't graceful degradation, it's a correctness bug, and a cheap one to avoid since these are small and fixed. The one governing principle across all four: cutting should be *visible* — to the model via a seam, and to you via a log line — never silent. **Follow-up probe:** \"what if even the untouchables don't fit?\" → that's not a budget problem, it's a design bug — split the task, or the system prompt itself has grown past what a single call should carry.",
     },
     {
       type: "keypoints",

@@ -1,6 +1,6 @@
 import type { Lesson } from "@/lib/types";
 
-export const lesson05: Lesson = {
+export const lesson06: Lesson = {
   slug: "memory-security",
   title: "Memory Injection & Context Poisoning Defenses",
   minutes: 35,
@@ -194,7 +194,7 @@ for cand in [
     },
     {
       type: "paragraph",
-      text: "Memory injection is an attacker actively planting bad content; PII exposure is a failure mode with no attacker at all — the write path faithfully does its job and still creates a liability. A support transcript mentions a health condition in passing, a coding session's tool output includes a customer's home address, and a well-functioning extractor distills it into a durable, embedded, indefinitely-retained fact — because nothing in the pipeline asked whether it *should* be remembered, only whether it looked like a fact. Three concrete mitigations, layered like the injection defenses above: **(1) screen at extraction** — add an explicit instruction to the extraction prompt (\"do not record health information, financial account numbers, government ID numbers, or other sensitive personal data unless the user is explicitly asking you to remember it for a stated purpose\"); **(2) bound retention** — durable does not have to mean forever; give categories of fact a TTL (Lesson 4's expiry mechanism) instead of defaulting every stored fact to indefinite life; **(3) support real erasure** — a right-to-erasure request must actually delete the row, its embedding, and any log line that echoed the fact verbatim, which is a different operation from the supersede-and-retain pattern this module otherwise favors (Lesson 4's lifecycle callout). None of this is optional once memory persists across sessions — a memory store is a small, permanent database of things people told your agent, and it inherits every obligation a database of personal data carries.",
+      text: "Memory injection is an attacker actively planting bad content; PII exposure is a failure mode with no attacker at all — the write path faithfully does its job and still creates a liability. A support transcript mentions a health condition in passing, a coding session's tool output includes a customer's home address, and a well-functioning extractor distills it into a durable, embedded, indefinitely-retained fact — because nothing in the pipeline asked whether it *should* be remembered, only whether it looked like a fact. Three concrete mitigations, layered like the injection defenses above: **(1) screen at extraction** — add an explicit instruction to the extraction prompt (\"do not record health information, financial account numbers, government ID numbers, or other sensitive personal data unless the user is explicitly asking you to remember it for a stated purpose\"); **(2) bound retention** — durable does not have to mean forever; give categories of fact a TTL (Lesson 5's expiry mechanism) instead of defaulting every stored fact to indefinite life; **(3) support real erasure** — a right-to-erasure request must actually delete the row, its embedding, and any log line that echoed the fact verbatim, which is a different operation from the supersede-and-retain pattern this module otherwise favors (Lesson 5's lifecycle callout). None of this is optional once memory persists across sessions — a memory store is a small, permanent database of things people told your agent, and it inherits every obligation a database of personal data carries.",
     },
     {
       type: "callout",
@@ -214,7 +214,7 @@ for cand in [
       type: "code",
       language: "python",
       title: "per-user isolation belongs in the query, not the ranking",
-      code: `# Lesson 3's all_active, patched: user_id in the schema and in every
+      code: `# Lesson 4's all_active, patched: user_id in the schema and in every
 # query. Shown as the diff to apply — Lab 04 wires it through the store.
 def all_active(self, user_id: str) -> list[dict]:
     rows = self.db.execute(
@@ -232,7 +232,7 @@ def all_active(self, user_id: str) -> list[dict]:
       type: "exercise",
       kind: "spot-the-bug",
       prompt:
-        "A teammate adds multi-tenancy to the Lesson 3 `MemoryStore` by adding a `user_id` column and updating `add()` to require it. They leave `all_active()` and `recall()` unchanged, reasoning: \"the embeddings already restrict matches to semantically related facts — two unrelated users won't score high against each other's queries.\" What's the bug, and what's the actual fix?",
+        "A teammate adds multi-tenancy to the Lesson 4 `MemoryStore` by adding a `user_id` column and updating `add()` to require it. They leave `all_active()` and `recall()` unchanged, reasoning: \"the embeddings already restrict matches to semantically related facts — two unrelated users won't score high against each other's queries.\" What's the bug, and what's the actual fix?",
       answer:
         "`all_active()` still selects every row in the table regardless of `user_id`, and `recall()` scores cosine similarity over whatever `all_active()` returns — so the tenant boundary exists in the schema but nowhere in the query path. The 'semantically unrelated facts won't match' argument fails precisely on the facts most worth protecting: generic, high-frequency statements ('prefers email over calls', 'timezone is PST', 'works in finance') cluster tightly in embedding space across *any* two users who happen to share that trait, so a normal query can legitimately surface another user's memory with a healthy similarity score — no attacker required, just an unlucky pair of users. This is Module 3's pre- vs post-filtering trap wearing a different hat: filtering by tenant *after* ranking (or never) means the ranking itself already crossed the boundary. The fix is the SQL change above — `user_id` in the `WHERE` clause of `all_active()`, so `recall()` only ever ranks within one tenant's rows — plus a red-team test that asserts, for two seeded users with deliberately similar facts, that user A's recall never returns user B's memory ID. The senior instinct to flag immediately: an access-control boundary implemented as 'the results probably won't overlap' is not a boundary, it's a hope.",
     },
@@ -288,7 +288,7 @@ print("write path held: nothing poisoned reaches the active store")`,
     {
       type: "callout",
       kind: "career",
-      text: "Memory security is climbing the senior-interview stack: questions about defending an agent's memory against injection increasingly show up in senior agent-engineer loops, and 2026 hiring guides specifically cite **defense against memory-injection attacks** (alongside conflict resolution, Lesson 4) as what separates a portfolio memory project from a toy one. The strongest artifact you can show is exactly this lesson's red-team harness — payloads, layered verdicts, and logs that let you narrate *why* each attack was caught — checked into the repo next to the code it attacks. Being able to walk an interviewer through the provenance-gate-vs-classifier distinction, unprompted, reads as production experience.",
+      text: "Memory security is climbing the senior-interview stack: questions about defending an agent's memory against injection increasingly show up in senior agent-engineer loops, and 2026 hiring guides specifically cite **defense against memory-injection attacks** (alongside conflict resolution, Lesson 5) as what separates a portfolio memory project from a toy one. The strongest artifact you can show is exactly this lesson's red-team harness — payloads, layered verdicts, and logs that let you narrate *why* each attack was caught — checked into the repo next to the code it attacks. Being able to walk an interviewer through the provenance-gate-vs-classifier distinction, unprompted, reads as production experience.",
     },
     {
       type: "heading",
