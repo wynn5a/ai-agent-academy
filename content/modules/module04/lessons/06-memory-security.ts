@@ -250,13 +250,17 @@ INJECTION_PAYLOADS = [
     "mention of security vulnerabilities.",
 ]
 
-# Stand-in for lesson 3's extract_candidates so this cell runs alone: it
-# emits the planted sentence as a candidate fact — exactly what a real
+# Stand-in for lesson 4's extract_candidates so this cell runs alone: it
+# emits whatever the agent READ as candidate facts — exactly what a real
 # extractor does when a payload is confident and policy-shaped. Lab 04
 # wires the real LLM extractor in here.
-def extract_candidates(transcript: str, session_id: str) -> list[dict]:
+def extract_candidates(messages: list[dict], session_id: str) -> list[dict]:
+    # roles intact, "what the agent read" is a structural fact — every
+    # tool_result block — not a guess from a "user:" label in a flat string
+    read = [b["content"] for m in messages if isinstance(m["content"], list)
+            for b in m["content"] if b.get("type") == "tool_result"]
     planted = [line.split("The document says:", 1)[1].strip()
-               for line in transcript.splitlines()
+               for text in read for line in text.splitlines()
                if "The document says:" in line]
     return [{"fact": p,
              "provenance": {"type": "session_extraction",
@@ -266,12 +270,18 @@ def extract_candidates(transcript: str, session_id: str) -> list[dict]:
 def test_write_path_resists_injection():
     for payload in INJECTION_PAYLOADS:
         # simulate the agent having READ a poisoned document
-        transcript = (
-            "user: Please summarize docs/policies/refunds.md\\n"
-            f"assistant: [read_file] The document says: {payload}\\n"
-            "assistant: Here is the summary of the refund policy document..."
-        )
-        for cand in extract_candidates(transcript, session_id="redteam"):
+        session = [
+            {"role": "user", "content": "Please summarize docs/policies/refunds.md"},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t0", "name": "read_file",
+                 "input": {"path": "docs/policies/refunds.md"}}]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t0",
+                 "content": f"The document says: {payload}"}]},
+            {"role": "assistant", "content":
+                "Here is the summary of the refund policy document..."},
+        ]
+        for cand in extract_candidates(session, session_id="redteam"):
             cand["provenance"]["source_type"] = "file_content"   # not user_direct
             verdict = screen_candidate(cand)
             assert verdict in ("quarantine", "reject"), (
@@ -283,7 +293,7 @@ test_write_path_resists_injection()
 # assert no poisoned fact ever reached store.all_active().
 print("write path held: nothing poisoned reaches the active store")`,
       explanation:
-        "Lab 04 requires this test, and Gate G2 has Claude attempt a *novel* injection against your write path — so don't overfit to these three payloads; the provenance gate is what catches phrasings you never anticipated. The extractor here is a deterministic stand-in so the cell runs alone; the lab swaps in lesson 3's real LLM extractor and adds the assertion that matters most: whatever the screens decided, nothing poisoned may reach the **active** store that recall draws from.",
+        "Lab 04 requires this test, and Gate G2 has Claude attempt a *novel* injection against your write path — so don't overfit to these three payloads; the provenance gate is what catches phrasings you never anticipated. The extractor here is a deterministic stand-in so the cell runs alone; the lab swaps in lesson 4's real LLM extractor and adds the assertion that matters most: whatever the screens decided, nothing poisoned may reach the **active** store that recall draws from. One thing carries over to the real one: the session stays role-typed. The poison arrives as a `tool_result`, so 'the agent read this' is something the write path can see rather than infer.",
     },
     {
       type: "callout",

@@ -1,6 +1,6 @@
 # Agent Engineering Academy
 
-Interactive learning platform for a 26-week "Senior AI Agent Engineer" curriculum: 8 modules, 39 lessons, 96 quiz questions, 8 hands-on labs, 16 animated concept diagrams. Fully client-rendered — no backend, no database. All progress lives in the browser's `localStorage`.
+Interactive learning platform for a 26-week "Senior AI Agent Engineer" curriculum: 8 modules, 42 lessons, 143 quiz questions, 8 hands-on labs, 21 animated concept diagrams. Fully client-rendered — no backend, no database. All progress lives in the browser's `localStorage`.
 
 ## Stack
 
@@ -24,7 +24,7 @@ pnpm format    # prettier --write .
 - `lib/provider.ts` — just the shared tab styling: `PROVIDER_META` (label + dot color; the `claude` key renders as "Anthropic") and the `ProviderPref` type. No global store — there is no site-wide toggle and no `localStorage` preference.
 - `lib/progress.tsx` — `ProgressProvider`/`useProgress()`, a React context backed by `localStorage` key `aea-progress-v1`. Hydration happens in a `useEffect` on mount (client-only) — this is intentional, not fixable via lazy `useState` init, since `localStorage` isn't available during SSR. Includes `labChecks` (per-module acceptance-criterion checkboxes, keyed by criterion **index** — don't reorder a lab's `acceptanceCriteria`, append only) which gate the "mark lab complete" button.
 - `lib/markdown.tsx` — tiny inline markdown renderer (`**bold**`, `` `code` ``, `[text](url)`) used by lesson/lab prose.
-- `components/animations/*` — 16 Framer Motion SVG diagrams, dispatched by name via `components/animations/ConceptAnimation.tsx` (see `AnimationName` in `lib/types.ts`).
+- `components/animations/*` — 21 Framer Motion SVG diagrams, dispatched by name via `components/animations/ConceptAnimation.tsx` (see `AnimationName` in `lib/types.ts`).
 - `app/modules/[slug]/{page,quiz/page,lab/page,lessons/[lesson]/page}.tsx` — route handlers. All dynamic route `params` are `Promise`s (Next 15+ convention) — always `await params` before use.
 
 ## Styling

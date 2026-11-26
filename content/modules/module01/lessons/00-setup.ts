@@ -57,7 +57,7 @@ export OPENAI_API_KEY="sk-..."`,
     },
     {
       type: "paragraph",
-      text: "Run this before moving on. If it prints a sentence, every snippet in the next 39 lessons will run in this same environment.",
+      text: "Run this before moving on. If it prints a sentence, every snippet in the next 41 lessons will run in this same environment.",
     },
     {
       type: "code",

@@ -314,6 +314,14 @@ print("constraint survived compaction")`,
     },
     {
       type: "heading",
+      text: "A second cost on newer models: the model's own reasoning",
+    },
+    {
+      type: "paragraph",
+      text: "Caching was the whole price of rewriting history until recently. It isn't any more. Frontier models now carry their own earlier thinking across calls, and both providers check, when a thinking block comes back, that the history in front of it hasn't changed. `maybe_compact` changes that history: the recent turns it keeps now sit behind a summary instead of the turns they were produced against. On the models this course runs on, neither check applies. `claude-sonnet-5` isn't on Anthropic's preserved-thinking list, and GPT-5.5 doesn't render earlier-turn reasoning into the next sample by default. On a newer model it can cost you. Anthropic's models with *preserved thinking* return a 400 on some models and, on others, no error at all while the model keeps working from reasoning about content that has since changed. OpenAI's GPT-6.2 and later drop the reasoning items that follow the edit. The safe forms of this lever are the provider's own: Anthropic's server-side compaction and context editing change only what Claude reads, so they never fail the check, and OpenAI's compaction keeps the reasoning after it. If you keep a hand-rolled summarizer for OpenAI's newer models, put the summary at the end of the context rather than in front of the recent turns. Lesson 3 prices every lever against both budgets.",
+    },
+    {
+      type: "heading",
       text: "What the summary can drop",
     },
     {
@@ -348,7 +356,7 @@ print("constraint survived compaction")`,
     },
     {
       type: "paragraph",
-      text: "As of this module, server-side compaction exists as a beta API feature on several frontier models: instead of writing `maybe_compact` yourself, the server auto-summarizes older context when a session approaches a configured token threshold, and returns a compaction block you pass back verbatim on the next call (extracting only the text and discarding the block loses the compaction state). It's the same idea this lesson teaches — cheaper to adopt, but a black box: you don't control the preservation list, so the planted-constraint regression test above matters *more*, not less, because you can't read the summarizer prompt to sanity-check it. Hand-rolling stays the right call when you need a domain-specific preservation list (this lesson's exact-values-and-constraints instruction), multi-provider portability, or a compaction trigger tied to something other than token count.",
+      text: "As of late 2026 both major providers ship server-side compaction, still in beta on Anthropic's side. Instead of writing `maybe_compact` yourself, the server summarizes older context, either at a token threshold you configure or on a request you send, and returns a compaction block you pass back exactly as it came. With Anthropic, dropping the block or leaving old history in front of it fails without an error: Claude simply gets no summary, or gets the old turns a second time. The two differ in what you can see. Anthropic's block is summary text you can read, and its default summarization prompt can be replaced with your own `instructions`. OpenAI's item is encrypted: 'opaque and not intended to be human-interpretable.' So the planted-constraint regression test above matters more under native compaction, not less. On OpenAI it's your only instrument. Hand-rolling stays the right call when you're porting across providers, running on a model the feature doesn't cover, or triggering on something other than a token count. Lesson 3 has the full comparison and the code for both.",
     },
     {
       type: "exercise",
@@ -381,7 +389,7 @@ old, recent = messages[:cut], messages[cut:]
       prompt:
         '**Drill:** "How do you prove compaction didn\'t quietly break your agent, beyond eyeballing that the summary reads fine?"',
       answer:
-        "Test it as the failure mode it is, behaviorally, not by reading the summary text. The recipe this lesson uses: plant a constraint early in a long scripted conversation ('never touch files under legacy/'), pad with enough filler turns to force compaction, then ask a question whose *correct* answer depends on the agent still honoring that constraint — assert on the agent's behavior, not on whether the word 'legacy' appears in the summary string. Reading the summary is brittle and gives false confidence: a summary can *mention* a constraint and the agent can still violate it three turns later if the phrasing lost its imperative force. Keep two or three of these planted-constraint scenarios covering different categories — a standing prohibition, an exact numeric value, a file path — in your regression suite, and run them every time the summarizer prompt changes, because summarizer prompts regress silently: a small rewording that reads *better* to a human can be strictly worse at surviving into agent behavior. **Follow-up probe:** \"what if you're on provider-native compaction and can't read the summarizer prompt at all?\" → the behavioral test matters even more — it's your only signal, since you can't inspect or tune what the server's summarizer preserves, so treat it as a black-box regression gate you run before every model or API version bump.",
+        "Test it as the failure mode it is, behaviorally, not by reading the summary text. The recipe this lesson uses: plant a constraint early in a long scripted conversation ('never touch files under legacy/'), pad with enough filler turns to force compaction, then ask a question whose *correct* answer depends on the agent still honoring that constraint — assert on the agent's behavior, not on whether the word 'legacy' appears in the summary string. Reading the summary is brittle and gives false confidence: a summary can *mention* a constraint and the agent can still violate it three turns later if the phrasing lost its imperative force. Keep two or three of these planted-constraint scenarios covering different categories — a standing prohibition, an exact numeric value, a file path — in your regression suite, and run them every time the summarizer prompt changes, because summarizer prompts regress silently: a small rewording that reads *better* to a human can be strictly worse at surviving into agent behavior. **Follow-up probe:** \"what changes on provider-native compaction?\" → it depends on the provider. Anthropic's block is summary text you can read, and its summarization prompt takes your own `instructions`, so you can inspect and tune. OpenAI's item is encrypted and its compact endpoint takes no instructions, so there the behavioral test is your only signal: treat it as a black-box regression gate you run before every model or API version bump.",
     },
     {
       type: "keypoints",
@@ -393,7 +401,8 @@ old, recent = messages[:cut], messages[cut:]
         "Test compaction behaviorally: plant a constraint, force compaction, verify the agent still honors it.",
         "Compaction fights prompt caching: every rewrite invalidates the cached prefix from the cut point forward — compact rarely, in batches, and watch cache_read_input_tokens to confirm the trade pays off (Module 2 Lesson 5).",
         "A summary should keep decisions, constraints, and exact values; it should drop resolved retries, dead-end exploration, and chit-chat — compressing to conclusions, not transcripts.",
-        "Server-side compaction now exists as a beta API feature; it changes who writes the summarizer, not the need to behaviorally test what survives.",
+        "Rewriting history has a second cost on newer models: the reasoning produced after the edit fails its prefix check. Prefer the provider's own compaction and context editing, which are exempt.",
+        "Server-side compaction now ships from both providers, still in beta at Anthropic: it calls that the primary strategy for most use cases, and its block is readable where OpenAI's is encrypted. Either way it changes who writes the summarizer, not the need to behaviorally test what survives.",
       ],
     },
   ],

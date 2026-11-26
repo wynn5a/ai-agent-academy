@@ -132,7 +132,7 @@ for fact in ["User deploys to production on Fridays.",
              "User no longer deploys on Fridays; deploys moved to Wednesdays."]:
     print(write_fact(store, {"fact": fact, "provenance": prov, "importance": 0.7}))`,
       explanation:
-        'The two thresholds carve embedding space into three zones: duplicate (skip), same-topic (escalate to the LLM judge — cosine similarity alone cannot tell "deploys on Fridays" from "no longer deploys on Fridays"; they embed *close*), and unrelated (store). Superseding rather than deleting preserves history: if the resolution was wrong, the evidence still exists. The store and encoder at the top repeat lesson 3\'s fixture so this notebook stands alone, and the in-memory demo walks all three zones in order.',
+        'The two thresholds carve embedding space into three zones: duplicate (skip), same-topic (escalate to the LLM judge — cosine similarity alone cannot tell "deploys on Fridays" from "no longer deploys on Fridays"; they embed *close*), and unrelated (store). Superseding rather than deleting preserves history: if the resolution was wrong, the evidence still exists. The store and encoder at the top repeat lesson 4\'s fixture so this notebook stands alone, and the in-memory demo walks all three zones in order.',
       provider: "claude",
       variants: [
         {

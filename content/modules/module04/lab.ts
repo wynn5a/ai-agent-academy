@@ -38,9 +38,10 @@ export const lab04: Lab = {
 #            superseded_by, embedding
 
 # memory/write_path.py
-def commit_session(store, transcript: str, session_id: str) -> list[str]:
+def commit_session(store, messages: list[dict], session_id: str) -> list[str]:
+    # role-typed messages all the way in: never a flattened transcript
     outcomes = []
-    for cand in extract_candidates(transcript, session_id):
+    for cand in extract_candidates(messages, session_id):
         verdict = screen_candidate(cand)          # provenance + instruction gates
         if verdict != "accept":
             log_quarantine(cand, verdict)
@@ -68,7 +69,7 @@ def run_session(task: str):
         # ... Lab 02 tool loop unchanged ...
         if resp.stop_reason != "tool_use":
             break
-    commit_session(STORE, render_transcript(messages), new_session_id())
+    commit_session(STORE, messages, new_session_id())
 
 # demo.py — three sessions, three fresh processes
 # tests/test_injection.py — your red-team suite (Lesson 6 harness)
@@ -84,9 +85,10 @@ def run_session(task: str):
 #            superseded_by, embedding
 
 # memory/write_path.py — identical: the gauntlet never touches the SDK
-def commit_session(store, transcript: str, session_id: str) -> list[str]:
+def commit_session(store, messages: list[dict], session_id: str) -> list[str]:
+    # role-typed messages all the way in: never a flattened transcript
     outcomes = []
-    for cand in extract_candidates(transcript, session_id):
+    for cand in extract_candidates(messages, session_id):
         verdict = screen_candidate(cand)          # provenance + instruction gates
         if verdict != "accept":
             log_quarantine(cand, verdict)
@@ -115,13 +117,13 @@ def run_session(task: str):
         #     function_call item, append its function_call_output ...
         if not any(item.type == "function_call" for item in resp.output):
             break
-    commit_session(STORE, render_transcript(messages), new_session_id())
+    commit_session(STORE, messages, new_session_id())
 
 # demo.py — three sessions, three fresh processes
 # tests/test_injection.py — your red-team suite (Lesson 6 harness)
 # tests/test_compaction.py — planted constraint survives compaction`,
           explanation:
-            "One deliberate design choice to notice: the Responses API offers server-side conversation state (`previous_response_id`) that would let you skip resending history — this lab keeps the message list client-side **on purpose**, because compaction, the write path, and the transcript you commit at session end all require owning that list. The stop condition becomes 'no `function_call` items in `resp.output`' instead of `stop_reason != \"tool_use\"`; everything memory-related is provider-neutral.",
+            "One deliberate design choice to notice: the Responses API offers server-side conversation state (`previous_response_id`) that would let you skip resending history — this lab keeps the message list client-side **on purpose**, because compaction, the write path, and the message list you commit at session end all require owning that list. The stop condition becomes 'no `function_call` items in `resp.output`' instead of `stop_reason != \"tool_use\"`; everything memory-related is provider-neutral.",
         },
       ],
     },

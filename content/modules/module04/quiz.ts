@@ -221,4 +221,43 @@ export const quiz04: QuizQuestion[] = [
     explanation:
       "Semantic similarity tells you what's related, not what you're allowed to see — treating it as an access-control mechanism is the same mistake as post-filtering a multi-tenant vector search after ranking instead of restricting the candidate set before ranking. The fix is a hard user_id predicate in the SQL query, verified by a red-team test that seeds two users with deliberately similar facts and asserts no cross-recall.",
   },
+  {
+    question:
+      "A long-running agent's window is filling with tool results the model has already acted on. Which lever should you reach for first, and why?",
+    options: [
+      "Summarize the old turns into a digest at the front of the message list: it shrinks the window the most, and the summarizer's preservation list keeps anything load-bearing",
+      "Evict the used tool results to a cold store and leave a stub that says how to reload each one: it's reversible, never touches constraints, and edits history later than a summary would",
+      "Move the work into a sub-agent so the parent window never sees the tool results: partitioning removes the content without any loss",
+      "Clear the oldest messages outright, oldest first, until the window is under budget: deletion is the cheapest operation and keeps the prefix stable",
+    ],
+    correct: 1,
+    explanation:
+      "Run down the shelf from the top: evict with a stub before you summarize, because it is the cheapest lever that still frees space. Nothing is lost permanently (a reload returns the exact bytes), constraints are never touched, and the edit lands later in the conversation than a summary at the front. Summarizing is the floor: it is lossy and rewrites the prefix from its position. Partitioning does not remove loss, since the brief that comes back is a summary too, and deleting oldest-first drops user messages and constraints, changes the prefix, and has no cold store.",
+  },
+  {
+    question:
+      "On a 2026 frontier model, what does rewriting earlier turns on the client cost beyond the prompt cache, and which rewrites avoid it?",
+    options: [
+      "Nothing beyond the cache: thinking blocks are opaque state the API regenerates on demand, so any edit that misses the cache simply re-bills the prefix",
+      "The request is rejected for any history edit unless you opt in with a beta header, so hand-rolled compaction fails on every preserved-thinking model until the provider enables it for your account",
+      "Earlier reasoning is preserved but billed twice, once in the original history and again as regenerated output tokens, which is why compacting rarely and in batches keeps the cost bounded",
+      "The reasoning produced before the edit can become invalid: Anthropic's prefix check returns a 400 on some models and no error on others, and OpenAI removes reasoning items after a prefix change on GPT-6.2 and later. The provider's own compaction and context editing are the rewrites that do not trip these checks",
+    ],
+    correct: 3,
+    explanation:
+      "Frontier models carry their own earlier thinking across calls, and each block was produced against a specific prefix. Change the history in front of it and the block is no longer trusted: a 400, or silently stale reasoning, on Anthropic's preserved-thinking models, and dropped reasoning items on OpenAI's newer ones. The exempt edits are the provider's own. Anthropic's server-side compaction and context editing change only what Claude reads, and OpenAI's compaction keeps the reasoning after it. Hand-rolling on newer models means accepting the loss or, on OpenAI, placing the summary at the end of the context.",
+  },
+  {
+    question:
+      "Why is flattening a session into a `'user: …'` transcript string before extracting memories a security defect rather than a style choice?",
+    options: [
+      "The text label is the only thing marking who spoke, so anything the agent read, such as a web page or a file, can carry a forged `user:` turn that the extractor records as a genuine user statement. Provenance is destroyed in harness code, so no prompt-level defense restores it; the fix is to keep messages role-typed",
+      "It is not a defect as long as the flattening is deterministic: unstable serialization is what breaks provenance, and a fixed label format preserves it",
+      "It hides tool calls from the extractor, so the write path can never dedupe facts that came from the same file read",
+      "It spends tokens on labels, which pushes long sessions past the extractor's context window; the fix is a compact JSON encoding of the same flattened transcript",
+    ],
+    correct: 0,
+    explanation:
+      "Roles are a structural fact in the message list and a convention in a flattened string. A 2026 study of open-source coding agents found that a forged user turn survived compaction as a genuine instruction in 87–100% of tries against harnesses that flatten, and in 0% against harnesses that keep messages role-typed. The provenance is destroyed deterministically, in code, before the summarizer runs, so the fix is structural too: pass the session as role-typed messages, and pin constraints to text the user actually typed.",
+  },
 ];
